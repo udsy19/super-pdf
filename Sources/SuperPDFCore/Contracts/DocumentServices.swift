@@ -54,6 +54,10 @@ public protocol ViewerPresenting: AnyObject {
     func showOrganiser(for document: DocumentHandle, adding files: [URL])
     /// Shown when the app opens with no document, and from Window › Welcome (ux §6.1).
     func showWelcome()
+    /// Asks for the password of a locked PDF inside a document window, as Preview does: a lock, "This PDF is locked.
+    /// Enter the password to open it.", a secure field and Open. `retry` shakes the field (the last one was wrong). The
+    /// window becomes the document's own when it opens. Nil when the person closes the window.
+    func password(forLocked fileName: String, retry: Bool) async -> String?
 }
 
 /// The settings window's panes (ux §6.6).

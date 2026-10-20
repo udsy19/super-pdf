@@ -699,6 +699,13 @@ final class FakeViewer: ViewerPresenting {
     func showSidebar(_ mode: SidebarMode, in document: DocumentHandle) { sidebarModes[document.id] = mode }
     func showOrganiser(for document: DocumentHandle, adding files: [URL]) {}
     func showWelcome() { welcomeShown += 1 }
+    /// Answers locked-PDF prompts from a script (nil: the window was closed) and records each `retry`.
+    var lockedPasswords: [String?] = []
+    var lockedAsks: [Bool] = []
+    func password(forLocked fileName: String, retry: Bool) async -> String? {
+        lockedAsks.append(retry)
+        return lockedPasswords.isEmpty ? nil : lockedPasswords.removeFirst()
+    }
 }
 
 @MainActor

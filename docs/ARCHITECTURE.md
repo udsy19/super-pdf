@@ -148,7 +148,8 @@ What `SuperPDFCore` actually declares, where it differs from or adds to the tabl
   `FormServicing`, `Signing`, `Protecting` and `Fixing` compose the listed sub-protocols. `Fixing` also owns
   `compare(_:with:textOnly:progress:)` for Compare files.
 - **Extra slots.** `Services.viewer` (`ViewerPresenting`: window controller per document, PDFView, selection, tool
-  panel slot, banner, sidebar, organiser, welcome), `Services.settings` (`SettingsPresenting`), and
+  panel slot, banner, sidebar, organiser, welcome, and the locked-PDF password asked inside the document's window,
+  which DocumentKit's prompter uses), `Services.settings` (`SettingsPresenting`), and
   `Services.toolProviders`: every tool module appends its `ToolProviding` in `install()`; ToolsKit reads the list when
   it installs (after them) and registers `Services.tools`.
 - **Tool host.** `ToolProviding` (`tools`, `availability`, `panel(for:context:)`, `preview(for:context:)`,

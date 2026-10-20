@@ -3,11 +3,13 @@ import SuperPDFCore
 import UniformTypeIdentifiers
 
 /// The app's answers to `DocumentPrompting`: standard alerts with the copy of ux §7.1 and §7.4, as sheets on the
-/// document's window when there is one, and the standard save panel.
+/// document's window when there is one, and the standard save panel. A locked PDF is asked for inside its window, as
+/// Preview does (ViewerKit's `password(forLocked:retry:)`); the alert remains for when no viewer is installed.
 @MainActor
 final class AlertPrompter: DocumentPrompting {
     func password(for fileName: String, retry: Bool) async -> String? {
-        await askPassword(window: nil, retry: retry)
+        if let viewer = Services.viewer { return await viewer.password(forLocked: fileName, retry: retry) }
+        return await askPassword(window: nil, retry: retry)
     }
 
     func ownerPassword(for fileName: String, retry: Bool, window: NSWindow?) async -> String? {

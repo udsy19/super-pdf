@@ -1,3 +1,834 @@
-// ViewerKit's checks, owned by WP4: it replaces this file and appends its cases to `SelfTest.cases` here (already
-// wired in main.swift). Placeholder until then.
-func registerViewerKitTests() {}
+import AppKit
+import CoreText
+import PDFKit
+import SuperPDFCore
+import ToolsKit
+@testable import ViewerKit
+
+// ViewerKit's checks (WP4): the drop-target table of ux §3, the page grid model behind the sidebar and the organiser
+// (reorder, multi-select, files mixed in), read-aloud sentences, recent-file dates, the window's metrics against ux §2.1
+// and the mockups, page edits through the thumbnails and the menus, the in-window password prompt, ViewerKit's two
+// tiles, offscreen renders of the main window, the result banner, the organiser and the welcome window, and the
+// performance budgets on a 500-page document. Windows are made but never shown; nothing is spoken; no panel opens.
+//
+// Renders go to the scratch folder, or to $SUPERPDF_RENDERS when it is set (to look at them next to docs/mockups).
+func registerViewerKitTests() {
+    SelfTest.cases.append(("ViewerKit.dropDecisions", { viewerKitDropDecisions() }))
+    SelfTest.cases.append(("ViewerKit.pageGridModel", { viewerKitPageGridModel() }))
+    SelfTest.cases.append(("ViewerKit.sentences", { viewerKitSentences() }))
+    SelfTest.cases.append(("ViewerKit.recentDates", { viewerKitRecentDates() }))
+    SelfTest.cases.append(("ViewerKit.window", { viewerKitWindow() }))
+    SelfTest.cases.append(("ViewerKit.pageEdits", { viewerKitPageEdits() }))
+    SelfTest.cases.append(("ViewerKit.lockedPrompt", { viewerKitLockedPrompt() }))
+    SelfTest.cases.append(("ViewerKit.tools", { viewerKitTools() }))
+    SelfTest.cases.append(("ViewerKit.renders", { viewerKitRenders() }))
+    SelfTest.cases.append(("ViewerKit.performance", { viewerKitPerformance() }))
+}
+
+// MARK: - Fixtures
+
+/// Fakes everywhere, the real viewer, and an environment that shows nothing and writes no defaults.
+@MainActor
+private func installViewer() -> (documents: FakeDocuments, alerts: AlertLog) {
+    _ = NSApplication.shared
+    installFakes()
+    let alerts = AlertLog()
+    var environment = ViewerEnvironment()
+    environment.persistsWindowState = false
+    environment.animates = false
+    environment.showsWindows = false
+    environment.alert = { message, _ in alerts.messages.append(message) }
+    environment.chooseFiles = { _, _, _ in [] }
+    environment.share = { _, _ in }
+    environment.revealInFinder = { _ in }
+    environment.openDocumentPanel = {}
+    Viewer.shared.environment = environment
+    ViewerKitModule.install()
+    (Services.tools as? FakeTools)?.collect()
+    return (Services.documents as! FakeDocuments, alerts)
+}
+
+@MainActor
+private final class AlertLog { var messages: [String] = [] }
+
+/// Turns the run loop until `condition` holds (or `seconds` pass).
+@MainActor
+private func wait(_ seconds: TimeInterval = 5, until condition: () -> Bool) {
+    let deadline = Date().addingTimeInterval(seconds)
+    while !condition() && Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
+}
+
+private func viewerFolder(_ name: String) -> URL {
+    SuperPDFPaths.ensure(scratch.appendingPathComponent("ViewerKit-\(name)-\(UUID().uuidString)", isDirectory: true))
+}
+
+/// Opens `url` through the fake document manager and makes its window (as NSDocument would).
+@MainActor
+private func openWindow(_ url: URL, documents: FakeDocuments) -> DocumentWindowController? {
+    guard case .success(let handle)? = complete(30, { try await documents.open(url) }) else { return nil }
+    let controller = Viewer.shared.makeWindowController(for: handle) as? DocumentWindowController
+    controller?.window?.layoutIfNeeded()
+    return controller
+}
+
+/// The mockups' lease (docs/mockups/src/shared.js): 12 Letter pages with a title, clauses in Georgia and a footer.
+private func makeLeasePDF() -> Data {
+    let data = NSMutableData()
+    var box = CGRect(x: 0, y: 0, width: 612, height: 792)
+    guard let consumer = CGDataConsumer(data: data as CFMutableData), let context = CGContext(consumer: consumer, mediaBox: &box, nil) else { return Data() }
+    let scale: CGFloat = 612 / 560
+    let sans = { (size: CGFloat, weight: NSFont.Weight) in NSFont.systemFont(ofSize: size * scale, weight: weight) }
+    let serif = NSFont(name: "Georgia", size: 11.6 * scale) ?? NSFont.systemFont(ofSize: 11.6 * scale)
+    let bold = NSFont(name: "Georgia-Bold", size: 11.6 * scale) ?? serif
+    let justified = NSMutableParagraphStyle()
+    justified.alignment = .justified
+    justified.lineHeightMultiple = 1.32
+    justified.paragraphSpacing = 8 * scale
+    let headingStyle = NSMutableParagraphStyle()
+    headingStyle.paragraphSpacingBefore = 14 * scale
+    headingStyle.paragraphSpacing = 4 * scale
+    let clauses: [(String, String)] = [
+        ("1. PARTIES", "This Residential Lease Agreement (the \"Agreement\") is entered into on 14 September 2026 between |Margaret Ellison| (\"Landlord\"), of 48 Orchard Lane, Bath, and |Priya Natarajan| (\"Tenant\"). The Landlord agrees to let, and the Tenant agrees to take, the premises described below on the terms set out in this Agreement."),
+        ("2. PREMISES", "The premises are the two-bedroom flat known as Flat 3, 112 Walcot Street, Bath BA1 5BG, together with the storage locker numbered 3 in the basement and one allocated parking space. The premises are let furnished according to the inventory attached as Schedule A."),
+        ("3. TERM", "The tenancy begins on 1 October 2026 and continues for a fixed term of twelve months, ending on 30 September 2027. Either party may give two months' written notice to end the tenancy after the fixed term has expired. Notice must be given in writing and delivered by hand, by post or by email to the addresses in clause 14."),
+        ("4. RENT", "The Tenant shall pay rent of £1,450 per calendar month in advance on the first day of each month, by standing order to the Landlord's nominated bank account. The first payment is due on or before the start date. Rent includes water rates but excludes gas, electricity, broadband and council tax."),
+        ("5. DEPOSIT", "A deposit of £1,670 is payable on signing and will be protected with an approved tenancy deposit scheme within thirty days. The deposit will be returned within ten working days of the end of the tenancy, less any agreed deductions."),
+    ]
+    for number in 1...12 {
+        context.beginPDFPage(nil)
+        let text = NSMutableAttributedString()
+        text.append(NSAttributedString(string: "Residential Lease Agreement\n", attributes: [.font: sans(17, .bold), .foregroundColor: NSColor(white: 0.13, alpha: 1)]))
+        let subtitle = number == 1 ? "Prepared 14 September 2026 · 12 pages" : "Page \(number) of 12 — Schedule"
+        let subtitleStyle = NSMutableParagraphStyle()
+        subtitleStyle.paragraphSpacingBefore = 4 * scale
+        subtitleStyle.paragraphSpacing = 12 * scale
+        text.append(NSAttributedString(string: subtitle + "\n", attributes: [.font: sans(10.5, .regular), .foregroundColor: NSColor(white: 0.4, alpha: 1),
+                                                                             .paragraphStyle: subtitleStyle]))
+        for (heading, body) in clauses {
+            text.append(NSAttributedString(string: heading + "\n", attributes: [.font: sans(11.6, .bold), .foregroundColor: NSColor(white: 0.27, alpha: 1),
+                                                                                .kern: 0.5, .paragraphStyle: headingStyle]))
+            for (index, part) in body.split(separator: "|", omittingEmptySubsequences: false).enumerated() {
+                text.append(NSAttributedString(string: String(part), attributes: [.font: index % 2 == 1 ? bold : serif,
+                                                                                  .foregroundColor: NSColor(white: 0.13, alpha: 1),
+                                                                                  .paragraphStyle: justified]))
+            }
+            text.append(NSAttributedString(string: "\n", attributes: [.font: serif, .paragraphStyle: justified]))
+        }
+        let frame = CTFramesetterCreateFrame(CTFramesetterCreateWithAttributedString(text), CFRange(location: 0, length: 0),
+                                             CGPath(rect: CGRect(x: 56 * scale, y: 60, width: 612 - 112 * scale, height: 792 - 60 - 60 * scale), transform: nil), nil)
+        CTFrameDraw(frame, context)
+        let footer = CTLineCreateWithAttributedString(NSAttributedString(string: "Page \(number) of 12", attributes: [.font: sans(9.5, .regular),
+                                                                                                                     .foregroundColor: NSColor.gray]))
+        context.textPosition = CGPoint(x: 612 - 56 * scale - CTLineGetTypographicBounds(footer, nil, nil, nil), y: 30)
+        CTLineDraw(footer, context)
+        context.endPDFPage()
+    }
+    context.closePDF()
+    return data as Data
+}
+
+// MARK: - Drop decisions (ux §3)
+
+@MainActor
+private func viewerKitDropDecisions() {
+    let me = UUID(), other = UUID()
+    let pdf = DroppedFile(url: URL(fileURLWithPath: "/tmp/Inventory.pdf"), isPDF: true, canConvert: true, pageCount: 3)
+    let pdf2 = DroppedFile(url: URL(fileURLWithPath: "/tmp/Annex.pdf"), isPDF: true, canConvert: true, pageCount: 2)
+    let word = DroppedFile(url: URL(fileURLWithPath: "/tmp/Letter.docx"), isPDF: false, canConvert: true)
+    let sketch = DroppedFile(url: URL(fileURLWithPath: "/tmp/Logo.sketch"), isPDF: false, canConvert: false)
+    let folder = DroppedFile(url: URL(fileURLWithPath: "/tmp/Scans"), isDirectory: true, isPDF: false, canConvert: false)
+    typealias Row = (payload: DropPayload, zone: DropZone, locked: Bool, option: Bool, outcome: DropOutcome, label: String?)
+    let table: [Row] = [
+        // Files on the page area open (converted first when needed): "Open".
+        (.files([pdf]), .pageArea, false, false, .open([pdf.url]), "Open"),
+        (.files([word, pdf]), .pageArea, false, false, .open([word.url, pdf.url]), "Open"),
+        // Between thumbnails: the file's pages go in there, with the count when it's known.
+        (.files([pdf]), .sidebarGap(2), false, false, .insertFiles([pdf.url], atGap: 2), "Add 3 pages here"),
+        (.files([pdf, pdf2]), .organiserGap(12), false, false, .insertFiles([pdf.url, pdf2.url], atGap: 12), "Add 5 pages here"),
+        (.files([word]), .sidebarGap(0), false, false, .insertFiles([word.url], atGap: 0), "Add here"),
+        // Welcome window: one file opens, several combine.
+        (.files([pdf]), .welcome, false, false, .open([pdf.url]), "Open"),
+        (.files([pdf, word]), .welcome, false, false, .combine([pdf.url, word.url]), "Combine files"),
+        // Drops that can't work say why.
+        (.files([folder]), .sidebarGap(1), false, false, .refuse("Can’t add a folder. Drop the files inside it."), nil),
+        (.files([sketch]), .pageArea, false, false,
+         .refuse("Super PDF can’t turn “.sketch” files into a PDF. Try opening the file in its app and using Print › Save as PDF."), nil),
+        (.files([pdf]), .sidebarGap(1), true, false, .refuse(Strings.Errors.passwordPrompt), nil),
+        // Thumbnails within the window reorder; dropping them back where they are does nothing.
+        (.pages(from: me, indices: [4, 2]), .sidebarGap(0), false, false, .movePages([2, 4], toGap: 0), nil),
+        (.pages(from: me, indices: [2, 3]), .sidebarGap(2), false, false, .none, nil),
+        (.pages(from: me, indices: [2, 3]), .organiserGap(4), false, false, .none, nil),
+        (.pages(from: me, indices: [2, 3]), .organiserGap(5), false, false, .movePages([2, 3], toGap: 5), nil),
+        // From another window: copy, ⌥ moves.
+        (.pages(from: other, indices: [0, 1]), .sidebarGap(3), false, false, .copyPages(from: other, [0, 1], toGap: 3, removingFromSource: false), "Add 2 pages here"),
+        (.pages(from: other, indices: [0]), .organiserGap(3), false, true, .copyPages(from: other, [0], toGap: 3, removingFromSource: true), "Add 1 page here"),
+        (.pages(from: other, indices: [0]), .pageArea, false, false, .none, nil),
+        // Text on a page: a new text box.
+        (.text("Approved"), .pageArea, false, false, .addText("Approved"), "Add text"),
+        (.text("Approved"), .sidebarGap(1), false, false, .none, nil),
+    ]
+    for (index, row) in table.enumerated() {
+        let decision = DropDecision.decide(row.payload, onto: row.zone, of: me, isLocked: row.locked, optionKey: row.option)
+        check(decision.outcome == row.outcome, "row \(index): \(decision.outcome) ≠ \(row.outcome)")
+        check(decision.label == row.label, "row \(index): label \(decision.label ?? "nil") ≠ \(row.label ?? "nil")")
+        if case .refuse = row.outcome { check(!decision.isAllowed, "row \(index): refused drops aren't allowed") }
+    }
+}
+
+// MARK: - Page grid model (ux §6.2)
+
+@MainActor
+private func viewerKitPageGridModel() {
+    var model = PageGridModel(pageCount: 12)
+    check(model.count == 12 && model.selection.isEmpty, "12 pages, nothing selected")
+    check(PageGridModel.destination(of: [2], toGap: 0) == 0 && PageGridModel.destination(of: [2], toGap: 5) == 4
+          && PageGridModel.destination(of: [1, 3], toGap: 5) == 3, "destination counts pages taken out before the gap")
+
+    // Reorder one page: page 7 (index 6) before page 3 (organizer.png's drag).
+    model.select([6])
+    check(model.move([6], toGap: 2) == .move([6], to: 2), "drag before page 3")
+    let key = model.entries[6].key
+    model.applyMove([6], toGap: 2)
+    check(model.entries[2].key == key && model.selection == [2], "the page lands at 3 and stays selected")
+    check(model.move([2], toGap: 2) == nil && model.move([2], toGap: 3) == nil, "dropping it back is no move")
+
+    // Multi-select and move a scattered selection to the end.
+    model.select([0, 4, 9])
+    let keys = [0, 4, 9].map { model.entries[$0].key }
+    check(model.move(model.selected, toGap: 12) == .move([0, 4, 9], to: 9), "three pages to the end")
+    model.applyMove(model.selected, toGap: 12)
+    check(model.entries.suffix(3).map(\.key) == keys && model.selection == [9, 10, 11], "they keep their order and stay selected")
+    model.select(IndexSet(integersIn: 0..<20))
+    check(model.selection.count == 12, "selection stays inside the pages")
+
+    // Insert a second file: its pages take its colour; the status line names it.
+    let inventory = PageOrigin(fileName: "Inventory.pdf", colorIndex: model.nextOriginColor)
+    check(inventory.colorIndex == 0 && PageOrigin.palette[0] == SPColor.categoryTeal, "the first mixed-in file is teal")
+    check(model.insertion(of: .file(URL(fileURLWithPath: "/tmp/Inventory.pdf")), atGap: 7)
+          == .insertFile(.file(URL(fileURLWithPath: "/tmp/Inventory.pdf")), pages: [], at: 7), "insert before page 8")
+    model.applyInsert(keys: [100, 101, 102], atGap: 7, origin: inventory)
+    check(model.count == 15 && model.entries[7...9].allSatisfy { $0.origin == inventory } && model.selection == [7, 8, 9],
+          "three pages from the file, selected")
+    model.select([2])
+    check(model.statusLine == "15 pages · 1 selected · 3 pages from “Inventory.pdf”", "status line (\(model.statusLine))")
+    check(model.nextOriginColor == 1, "a second file gets the next colour")
+
+    // Delete, rotate; never the last page.
+    check((try? model.deletion([7, 8])) == .delete([7, 8]), "delete two")
+    model.applyDelete([7, 8])
+    check(model.count == 13 && model.files.first?.pages == 1, "one Inventory page left")
+    check(model.rotation([3, 1, 3], quarterTurns: -1) == .rotate([1, 3], quarterTurns: -1), "rotate left, sorted, once each")
+    let single = PageGridModel(pageCount: 1)
+    do { _ = try single.deletion([0]); check(false, "the last page can't go") } catch {
+        check((error as? PageEditError) == .lastPage && error.localizedDescription == "A PDF needs at least one page.", "says why")
+    }
+}
+
+// MARK: - Read aloud, recents
+
+@MainActor
+private func viewerKitSentences() {
+    let text = "The tenancy begins on 1 October 2026. Either party may give notice! Is rent due monthly? Yes."
+    let sentences = SentenceSplitter.sentences(in: text)
+    let strings = sentences.map { (text as NSString).substring(with: $0).trimmingCharacters(in: .whitespaces) }
+    check(strings == ["The tenancy begins on 1 October 2026.", "Either party may give notice!", "Is rent due monthly?", "Yes."],
+          "four sentences (\(strings))")
+    let spoken = (text as NSString).range(of: "notice")
+    check(SentenceSplitter.sentence(containing: spoken, in: sentences) == sentences[1], "the word's sentence is highlighted")
+}
+
+@MainActor
+private func viewerKitRecentDates() {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(identifier: "Europe/London")!
+    let locale = Locale(identifier: "en_GB")
+    let now = calendar.date(from: DateComponents(year: 2026, month: 10, day: 20, hour: 10))!
+    let yesterday = calendar.date(from: DateComponents(year: 2026, month: 10, day: 19, hour: 16, minute: 12))!
+    let monday = calendar.date(from: DateComponents(year: 2026, month: 10, day: 12, hour: 9))!
+    let september = calendar.date(from: DateComponents(year: 2026, month: 9, day: 12, hour: 9))!
+    let lastYear = calendar.date(from: DateComponents(year: 2025, month: 9, day: 12, hour: 9))!
+    let weekAgo = calendar.date(from: DateComponents(year: 2026, month: 10, day: 16, hour: 9))!
+    check(RecentDates.string(for: yesterday, now: now, calendar: calendar, locale: locale).hasPrefix("Yesterday, "), "yesterday with the time")
+    check(RecentDates.string(for: weekAgo, now: now, calendar: calendar, locale: locale) == "Friday", "this week: the day")
+    check(RecentDates.string(for: monday, now: now, calendar: calendar, locale: locale) == "12 Oct", "older: day and month")
+    check(RecentDates.string(for: september, now: now, calendar: calendar, locale: locale) == "12 Sept"
+          || RecentDates.string(for: september, now: now, calendar: calendar, locale: locale) == "12 Sep", "12 Sep")
+    check(RecentDates.string(for: lastYear, now: now, calendar: calendar, locale: locale).hasSuffix("2025"), "another year shows it")
+}
+
+// MARK: - Window metrics (ux §2.1, main-window.png)
+
+@MainActor
+private func viewerKitWindow() {
+    let (documents, _) = installViewer()
+    let folder = viewerFolder("window")
+    let url = folder.appendingPathComponent("Lease agreement.pdf")
+    try? makeLeasePDF().write(to: url)
+    guard let controller = openWindow(url, documents: documents), let window = controller.window else { check(false, "window"); return }
+    check(Services.viewer === Viewer.shared && Services.toolProviders.contains { $0 is ViewerTools }, "installs the viewer and its tiles")
+    check(window.frame.size == SPMetrics.Window.defaultSize && window.minSize == SPMetrics.Window.minimumSize,
+          "1100 × 760, at least 640 × 440 (\(window.frame.size), \(window.minSize))")
+    check(window.toolbarStyle == .unified && window.titleVisibility == .hidden, "unified toolbar, title in the middle")
+    check(window.frame.height - window.contentLayoutRect.height == SPMetrics.Window.toolbarHeight,
+          "52 pt title and toolbar (\(window.frame.height - window.contentLayoutRect.height))")
+    let identifiers = window.toolbar?.items.map(\.itemIdentifier) ?? []
+    check(identifiers == [.viewMenu, .sidebarTrackingSeparator, .zoom, .flexibleSpace, .documentTitle, .flexibleSpace, .markup, .rotate,
+                          .tools, .share, .search], "Preview's toolbar plus Tools (\(identifiers.map(\.rawValue)))")
+    check(window.toolbar?.centeredItemIdentifiers == [.documentTitle], "the title is centred")
+    let tools = window.toolbar?.items.first { $0.itemIdentifier == .tools }?.view
+    check(tools?.intrinsicContentSize.height == SPMetrics.Toolbar.toolsButtonHeight, "Tools is 28 pt tall")
+    let search = window.toolbar?.items.first { $0.itemIdentifier == .search } as? NSSearchToolbarItem
+    check(search?.preferredWidthForSearchField == 180 && search?.searchField.placeholderString == "Search", "180 pt Search")
+    check(controller.sidebar.view.frame.width == SPMetrics.Sidebar.defaultWidth, "197 pt sidebar (\(controller.sidebar.view.frame.width))")
+    check(controller.sidebar.bottomBar.frame.height == SPMetrics.Sidebar.bottomBarHeight, "29 pt bottom bar")
+    check(controller.pdfView.displayMode == .singlePageContinuous && controller.pdfView.pageShadowsEnabled && controller.pdfView.displaysPageBreaks,
+          "continuous scroll, shadows, page breaks")
+    check(controller.pdfView.pageBreakMargins.top == 4.75 && controller.pdfView.pageBreakMargins.left == 4, "Preview's page-break margins")
+
+    // Thumbnails: sidebar − 32 wide, 12 pt apart, numbered under the page.
+    let grid = controller.sidebar.thumbnails
+    grid.collectionView.layoutSubtreeIfNeeded()
+    let items = (0..<2).compactMap { grid.collectionView.item(at: IndexPath(item: $0, section: 0)) as? PageItem }
+    if items.count == 2 {
+        let first = items[0].thumbnail.convert(items[0].thumbnail.pageRect, to: grid.collectionView)
+        let second = items[1].thumbnail.convert(items[1].thumbnail.pageRect, to: grid.collectionView)
+        check(first.width == SPMetrics.Sidebar.defaultWidth - SPMetrics.Sidebar.thumbnailInset, "thumbnail = sidebar − 32 (\(first.width))")
+        check(abs(first.minX - 16) < 0.5 && abs(first.minY - 14) < 0.5, "16 pt in, 14 pt down (\(first.origin))")
+        let gap = second.minY - (first.maxY + ThumbnailStyle.sidebar.labelGap + ThumbnailStyle.labelHeight)
+        check(abs(gap - SPMetrics.Sidebar.thumbnailGap) < 0.5, "12 pt between thumbnails (\(gap))")
+        check(items[0].thumbnail.label == "1" && items[1].thumbnail.label == "2", "page numbers")
+    } else { check(false, "two thumbnails laid out") }
+    check(controller.selectedPages == [0], "the first page starts selected")
+
+    // The tool panel: 320 pt inline at this width; a card over the document below 1000 pt.
+    let panel = NSViewController()
+    panel.view = NSView()
+    Viewer.shared.showToolPanel(panel, in: controller.handle)
+    window.layoutIfNeeded()
+    check(!controller.panelItem.isCollapsed && controller.panelSlot.view.frame.width == SPMetrics.ToolPanel.width, "320 pt inline panel")
+    Viewer.shared.showToolPanel(nil, in: controller.handle)
+    window.setFrame(NSRect(origin: window.frame.origin, size: NSSize(width: 900, height: 700)), display: false)
+    Viewer.shared.showToolPanel(panel, in: controller.handle)
+    check(controller.panelItem.isCollapsed && controller.documentArea.overlayPanel === panel, "narrow window: the panel floats")
+    Viewer.shared.showToolPanel(nil, in: controller.handle)
+    check(controller.documentArea.overlayPanel == nil, "panel closes")
+    window.setFrame(NSRect(origin: window.frame.origin, size: SPMetrics.Window.defaultSize), display: false)
+
+    // The banner slot: 44 pt under the toolbar, gone when dismissed.
+    Viewer.shared.showBanner(Strings.Banner.madeSmaller(before: 6_100_000, after: 1_700_000), in: controller.handle)
+    check(controller.root.bannerSlotHeight == SPMetrics.Banner.height && controller.root.banner != nil, "44 pt banner")
+
+    // Sidebar modes and the View menu's checks.
+    Viewer.shared.showSidebar(.tableOfContents, in: controller.handle)
+    check(controller.sidebar.mode == .tableOfContents, "Table of Contents")
+    let item = NSMenuItem(title: "Thumbnails", action: #selector(DocumentWindowController.performMenuCommand(_:)), keyEquivalent: "")
+    item.identifier = NSUserInterfaceItemIdentifier(MenuCommand.thumbnails.rawValue)
+    controller.performMenuCommand(item)
+    check(controller.sidebar.mode == .thumbnails && controller.validateMenuItem(item) && item.state == .on, "View › Thumbnails, ticked")
+    let hide = NSMenuItem(title: "", action: #selector(DocumentWindowController.performMenuCommand(_:)), keyEquivalent: "")
+    hide.identifier = NSUserInterfaceItemIdentifier(MenuCommand.hideSidebar.rawValue)
+    controller.performMenuCommand(hide)
+    check(controller.sidebarItem.isCollapsed && controller.validateMenuItem(hide) && hide.title == "Show Sidebar", "Hide Sidebar ⌥⌘1 toggles")
+    controller.performMenuCommand(hide)
+    let twoPages = NSMenuItem(title: "", action: #selector(DocumentWindowController.performMenuCommand(_:)), keyEquivalent: "")
+    twoPages.identifier = NSUserInterfaceItemIdentifier(MenuCommand.twoPages.rawValue)
+    controller.performMenuCommand(twoPages)
+    check(controller.displayMode == .twoPages && controller.pdfView.displaysAsBook, "Two Pages ⌘3 shows a book")
+    // Save a Copy… and Enter Password… go on to the document, never handled here.
+    let copy = NSMenuItem(title: "", action: #selector(DocumentWindowController.performMenuCommand(_:)), keyEquivalent: "")
+    copy.identifier = NSUserInterfaceItemIdentifier(MenuCommand.saveACopy.rawValue)
+    check(controller.validate(.saveACopy, copy) == nil && controller.validate(.enterPassword, copy) == nil
+          && !controller.perform(.saveACopy, from: copy) && !controller.perform(.enterPassword, from: copy), "document commands pass through")
+    // The context menu (main-window.png).
+    let menu = controller.pageMenu(for: [0])
+    check(menu.items.map(\.title) == ["Rotate Left", "Rotate Right", "Delete Page", "", "Extract Page…", "Insert Page", "Duplicate", "",
+                                      "Black out this page…", "Make smaller…", "Share Page…"], "page menu (\(menu.items.map(\.title)))")
+    check(menu.items[0].keyEquivalent == "l" && menu.items[1].keyEquivalent == "r" && menu.items[2].keyEquivalent == KeyCombo.deleteKey,
+          "⌘L ⌘R ⌫")
+    check(controller.pageMenu(for: [0, 1]).items[2].title == "Delete Pages", "plural for several pages")
+    check(controller.pageIndex(forTyped: "3") == 2 && controller.pageIndex(forTyped: "13") == nil, "Go to Page…")
+    window.close()
+}
+
+// MARK: - Page edits through the window
+
+@MainActor
+private func viewerKitPageEdits() {
+    let (documents, alerts) = installViewer()
+    let folder = viewerFolder("edits")
+    let url = folder.appendingPathComponent("Report.pdf")
+    try? makePDF(pages: 4).write(to: url)
+    guard let controller = openWindow(url, documents: documents) else { check(false, "window"); return }
+    let pages = Services.pages as! FakePages
+    let undo = controller.handle.undoManager
+
+    // ⌘R on the selected thumbnail.
+    controller.sidebar.thumbnails.select([1], scroll: false)
+    let rotate = NSMenuItem(title: "", action: #selector(DocumentWindowController.performMenuCommand(_:)), keyEquivalent: "")
+    rotate.identifier = NSUserInterfaceItemIdentifier(MenuCommand.rotateRight.rawValue)
+    controller.performMenuCommand(rotate)
+    wait { controller.handle.pdf.page(at: 1)?.rotation == 90 }
+    check(pages.performed.last == .rotate([1], quarterTurns: 1) && controller.handle.pdf.page(at: 1)?.rotation == 90, "⌘R rotates the selection")
+    check(undo?.canUndo == true, "one undo step")
+    undo?.undo()
+    check(controller.handle.pdf.page(at: 1)?.rotation == 0, "⌘Z puts it back")
+
+    // ⌫ deletes; the next page is selected; never the last one.
+    controller.sidebar.thumbnails.select([2, 3], scroll: false)
+    controller.sidebar.thumbnails.deleteSelection()
+    wait { controller.handle.pageCount == 2 }
+    check(controller.handle.pageCount == 2 && controller.sidebar.bottomBar.text == "2 pages", "deleted two; “2 pages”")
+    check(controller.selectedPages == [1], "selection moves to the page before (\(controller.selectedPages))")
+    controller.sidebar.thumbnails.select([0, 1], scroll: false)
+    controller.sidebar.thumbnails.deleteSelection()
+    wait { !alerts.messages.isEmpty }
+    check(alerts.messages == ["A PDF needs at least one page."] && controller.handle.pageCount == 2, "can't delete every page")
+
+    // Rearranging asks PagesKit for a move to the right place.
+    controller.pageActions.move([0], toGap: 2)
+    wait { pages.performed.last == .move([0], to: 1) }
+    check(pages.performed.last == .move([0], to: 1), "drag page 1 after page 2")
+
+    // The organiser: in and out, with Done.
+    Viewer.shared.showOrganiser(for: controller.handle, adding: [])
+    check(controller.organiser != nil && controller.window?.toolbar?.identifier == DocumentToolbar.organiserToolbarID, "organiser shows")
+    let ids = controller.window?.toolbar?.items.map(\.itemIdentifier) ?? []
+    check(ids == [.viewMenu, .flexibleSpace, .organiserTitle, .flexibleSpace, .organiserRotateLeft, .organiserRotateRight, .organiserDelete,
+                  .organiserSize, .organiserDone], "organiser toolbar (\(ids.map(\.rawValue)))")
+    controller.cancelOperation(nil)
+    check(controller.organiser == nil && controller.window?.toolbar?.identifier == DocumentToolbar.documentToolbarID, "Esc goes back")
+    controller.window?.close()
+}
+
+// MARK: - The locked PDF's in-window prompt
+
+@MainActor
+private func viewerKitLockedPrompt() {
+    _ = installViewer()
+    var answers: [String?] = []
+    Task { @MainActor in answers.append(await Viewer.shared.password(forLocked: "Secret.pdf", retry: false)) }
+    wait { Viewer.shared.lockedPrompt(named: "Secret.pdf") != nil }
+    guard let prompt = Viewer.shared.lockedPrompt(named: "Secret.pdf") else { check(false, "the prompt window exists"); return }
+    let window = prompt.window
+    check(window?.frame.size == SPMetrics.Window.defaultSize && window?.title == "Secret.pdf", "a document-sized window titled with the file")
+    check(prompt.lockView.openButton.title == "Open" && prompt.lockView.accessibilityLabel() == "This PDF is locked. Enter the password to open it.",
+          "lock, sentence, Open")
+    prompt.lockView.field.stringValue = "wrong"
+    prompt.lockView.openButton.performClick(nil)
+    wait { answers.count == 1 }
+    check(answers == ["wrong"], "Open answers with the typed password")
+    Task { @MainActor in answers.append(await Viewer.shared.password(forLocked: "Secret.pdf", retry: true)) }
+    wait { prompt.lockView.field.isEnabled }
+    check(prompt.lockView.field.stringValue.isEmpty, "a wrong password clears the field (and shakes it)")
+    prompt.lockView.field.stringValue = "open sesame"
+    prompt.lockView.openButton.performClick(nil)
+    wait { answers.count == 2 }
+    check(answers.last == "open sesame", "second try")
+    // The document's window is this window.
+    let handle = DocumentHandle(url: URL(fileURLWithPath: "/tmp/Secret.pdf"), pdf: PDFDocument(data: makePDF(pages: 1))!, undoManager: makeUndoManager())
+    let controller = Viewer.shared.makeWindowController(for: handle)
+    check(controller.window === window && Viewer.shared.lockedPrompt(named: "Secret.pdf") == nil, "the window becomes the document's")
+    // Closing the window cancels.
+    Task { @MainActor in answers.append(await Viewer.shared.password(forLocked: "Other.pdf", retry: false)) }
+    wait { Viewer.shared.lockedPrompt(named: "Other.pdf") != nil }
+    Viewer.shared.lockedPrompt(named: "Other.pdf")?.window?.close()
+    wait { answers.count == 3 }
+    check(answers.count == 3 && answers[2] == nil, "closing the window is Cancel")
+    controller.window?.close()
+}
+
+// MARK: - Contents and Read aloud tiles
+
+@MainActor
+private func viewerKitTools() {
+    _ = installViewer()
+    guard let provider = Services.toolProviders.first(where: { $0 is ViewerTools }) else { check(false, "provider"); return }
+    check(provider.tools == [.contents, .readAloud], "Contents and Read aloud")
+    check(ToolCatalog.tile(.readAloud).section == .fixAndCheck && !ToolSection.allCases.map(\.title).contains("Understand"),
+          "Read aloud sits with Fix & check; no Understand section")
+    let document = makeDocument(pages: 2)
+    let read = provider.panel(for: .readAloud, context: ToolContext(tool: .readAloud, document: document))
+    check(read.archetype == .oneChoice && read.primary.title == "Read from this page" && read.controls.count <= 3, "Read aloud panel (A)")
+    if case .popup(_, _, let voices, _) = read.controls.last { check((1...7).contains(voices.count), "at most seven voices") }
+    let contents = provider.panel(for: .contents, context: ToolContext(tool: .contents, document: document))
+    check(contents.archetype == .oneChoice && contents.primary.title == "Find headings", "Contents panel (A)")
+    // Headings nest under the closest bigger one.
+    let tree = OutlineBuilder.tree([.init(title: "1", level: 1, page: 0, top: 700), .init(title: "1.1", level: 2, page: 0, top: 600),
+                                    .init(title: "1.2", level: 2, page: 1, top: 700), .init(title: "2", level: 1, page: 1, top: 400)])
+    check(tree.map(\.heading.title) == ["1", "2"] && tree[0].children.map(\.heading.title) == ["1.1", "1.2"], "outline nesting")
+}
+
+// MARK: - Offscreen renders against the mockups
+
+/// Where renders go: $SUPERPDF_RENDERS, else the scratch folder.
+private var renderFolder: URL {
+    if let path = ProcessInfo.processInfo.environment["SUPERPDF_RENDERS"] { return SuperPDFPaths.ensure(URL(fileURLWithPath: path, isDirectory: true)) }
+    return SuperPDFPaths.ensure(scratch.appendingPathComponent("ViewerKit-renders", isDirectory: true))
+}
+
+/// Draws a window as the window server would, offscreen and at 2×: system materials (sidebar, document well) are
+/// painted with their reference colours, every view draws itself, then PDFKit draws the visible pages.
+@MainActor
+@discardableResult
+private func render(_ window: NSWindow, _ name: String, dark: Bool = false, sidebar: NSView? = nil) -> NSBitmapImageRep? {
+    window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+    window.layoutIfNeeded()
+    window.contentView?.layoutSubtreeIfNeeded()
+    window.displayIfNeeded()
+    guard let frameView = window.contentView?.superview else { return nil }
+    let bounds = frameView.bounds
+    guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(bounds.width * 2), pixelsHigh: Int(bounds.height * 2), bitsPerSample: 8,
+                                     samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .calibratedRGB, bytesPerRow: 0, bitsPerPixel: 0)
+    else { return nil }
+    rep.size = bounds.size
+    guard let context = NSGraphicsContext(bitmapImageRep: rep) else { return nil }
+    NSGraphicsContext.saveGraphicsState()
+    NSGraphicsContext.current = context
+    (window.appearance ?? NSAppearance(named: .aqua)!).performAsCurrentDrawingAppearance {
+        SPColor.windowBackground.color.setFill()
+        bounds.fill()
+        if let sidebar, !sidebar.isHiddenOrHasHiddenAncestor { SPColor.sidebar.color.setFill(); sidebar.convert(sidebar.bounds, to: frameView).fill() }
+        for view in allViews(frameView).compactMap({ $0 as? PDFView }) { SPColor.underPageBackground.color.setFill(); view.convert(view.bounds, to: frameView).fill() }
+        // The title bar's glass needs the window server; hide it while the views draw, then draw the toolbar as it lays out.
+        let titlebar = allViews(frameView).filter { String(describing: type(of: $0)) == "NSTitlebarContainerView" }
+        titlebar.forEach { $0.isHidden = true }
+        frameView.displayIgnoringOpacity(bounds, in: context)
+        titlebar.forEach { $0.isHidden = false }
+        drawTitlebar(of: window, in: frameView)
+        drawToolbar(of: window, in: frameView)
+        for view in allViews(frameView).compactMap({ $0 as? PDFView }) { drawPages(of: view, in: frameView) }
+    }
+    NSGraphicsContext.restoreGraphicsState()
+    try? rep.representation(using: .png, properties: [:])?.write(to: renderFolder.appendingPathComponent(name + ".png"))
+    return rep
+}
+
+private func allViews(_ root: NSView) -> [NSView] { [root] + root.subviews.flatMap(allViews) }
+
+/// The title bar's background, bottom line and the traffic lights at (20, 18) (ux §2.1), as the window server draws them.
+@MainActor
+private func drawTitlebar(of window: NSWindow, in frameView: NSView) {
+    let height = window.frame.height - window.contentLayoutRect.height
+    let bar = NSRect(x: 0, y: frameView.bounds.height - height, width: frameView.bounds.width, height: height)
+    SPColor.windowBackground.color.setFill()
+    bar.fill()
+    if window.toolbar != nil {
+        SPColor.separator.color.setFill()
+        NSRect(x: 0, y: bar.minY, width: bar.width, height: 1).fill()
+    }
+    for (index, hex) in ["#FF5F57", "#FEBC2E", "#28C840"].enumerated() {
+        NSColor(hex: hex).setFill()
+        let center = NSPoint(x: SPMetrics.Window.trafficLights.x + CGFloat(index) * 20, y: frameView.bounds.height - (window.toolbar == nil ? 18 : 26))
+        NSBezierPath(ovalIn: NSRect(x: center.x - 6, y: center.y - 6, width: 12, height: 12)).fill()
+    }
+}
+
+/// The toolbar where NSToolbar placed each item. The window server draws the system's own controls (buttons, the
+/// segmented zoom, the search field), so they are drawn here as stand-ins at their real frames; ViewerKit's own item
+/// views (the title, Tools, Done) draw themselves.
+@MainActor
+private func drawToolbar(of window: NSWindow, in frameView: NSView) {
+    guard let context = NSGraphicsContext.current?.cgContext else { return }
+    let ink = SPColor.label.color.withAlphaComponent(0.72)
+    func symbol(_ image: NSImage?, centredIn rect: NSRect, size: CGFloat = 17) {
+        guard let image = image?.withSymbolConfiguration(.init(pointSize: size, weight: .regular).applying(.init(paletteColors: [ink]))) else { return }
+        let imageSize = image.size
+        image.draw(in: NSRect(x: rect.midX - imageSize.width / 2, y: rect.midY - imageSize.height / 2, width: imageSize.width, height: imageSize.height))
+    }
+    for viewer in allViews(frameView) where String(describing: type(of: viewer)).contains("ToolbarItemViewer") {
+        guard let item = viewer.value(forKey: "item") as? NSToolbarItem else { continue }
+        let rect = viewer.convert(viewer.bounds, to: frameView)
+        let kind = viewer.subviews.first.map { String(describing: type(of: $0)) } ?? ""
+        if let view = item.view, view is TitleView || view is ProminentButton || view is NSSlider {
+            let frame = view.convert(view.bounds, to: frameView)
+            context.saveGState()
+            context.translateBy(x: frame.minX, y: view.isFlipped ? frame.maxY : frame.minY)
+            if view.isFlipped { context.scaleBy(x: 1, y: -1) }
+            let previous = NSGraphicsContext.current
+            NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: view.isFlipped)
+            view.draw(view.bounds)
+            NSGraphicsContext.current = previous
+            context.restoreGState()
+            continue
+        }
+        switch kind {
+        case "NSToolbarButton":
+            symbol(item.image, centredIn: rect)
+        case "NSToolbarPullDownButton":
+            symbol(item.image, centredIn: rect.offsetBy(dx: -6, dy: 0))
+            symbol(NSImage(systemSymbolName: "chevron.down", accessibilityDescription: nil), centredIn: NSRect(x: rect.midX + 8, y: rect.minY, width: 12, height: rect.height), size: 9)
+        case "NSToolbarItemGroupPickerView":
+            let group = item as? NSToolbarItemGroup
+            let images = group?.subitems.compactMap(\.image) ?? []
+            let capsule = NSRect(x: rect.minX + 4, y: rect.midY - 14, width: rect.width - 8, height: 28)
+            let path = NSBezierPath(roundedRect: capsule, xRadius: 8, yRadius: 8)
+            SPColor.label.color.withAlphaComponent(0.06).setFill()
+            path.fill()
+            SPColor.separator.color.setStroke()
+            path.stroke()
+            let width = capsule.width / CGFloat(max(images.count, 1))
+            for (index, image) in images.enumerated() {
+                let segment = NSRect(x: capsule.minX + CGFloat(index) * width, y: capsule.minY, width: width, height: capsule.height)
+                symbol(image, centredIn: segment, size: 14)
+                if index > 0 { SPColor.separator.color.setFill(); NSRect(x: segment.minX, y: segment.minY, width: 1, height: segment.height).fill() }
+            }
+        case "NSSearchToolbarItemView":
+            let field = NSRect(x: rect.maxX - SPMetrics.Toolbar.searchFieldWidth - 12, y: rect.midY - 14, width: SPMetrics.Toolbar.searchFieldWidth, height: 28)
+            let path = NSBezierPath(roundedRect: field.insetBy(dx: 0.5, dy: 0.5), xRadius: 8, yRadius: 8)
+            SPColor.controlBackground.color.setFill()
+            path.fill()
+            NSColor.black.withAlphaComponent(0.16).setStroke()
+            path.stroke()
+            symbol(NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil), centredIn: NSRect(x: field.minX + 4, y: field.minY, width: 20, height: field.height), size: 12)
+            NSAttributedString(string: "Search", attributes: [.font: SPFont.body.font(), .foregroundColor: SPColor.tertiaryLabel.color])
+                .draw(at: NSPoint(x: field.minX + 28, y: field.midY - 8))
+        case "NSSeparatorToolbarItemView":
+            SPColor.separator.color.setFill()
+            NSRect(x: rect.midX, y: rect.midY - 11, width: 1, height: 22).fill()
+        default:
+            break
+        }
+    }
+}
+
+/// PDFKit's pages where the PDFView shows them, with Preview's page shadow.
+@MainActor
+private func drawPages(of view: PDFView, in frameView: NSView) {
+    guard let document = view.document, let context = NSGraphicsContext.current?.cgContext else { return }
+    let visible = view.convert(view.bounds, to: frameView)
+    context.saveGState()
+    context.clip(to: visible)
+    for page in view.visiblePages {
+        let rect = view.convert(view.convert(page.bounds(for: view.displayBox), from: page), to: frameView)
+        NSGraphicsContext.saveGraphicsState()
+        let shadow = NSShadow()
+        shadow.shadowColor = NSColor.black.withAlphaComponent(0.25)
+        shadow.shadowBlurRadius = 6
+        shadow.shadowOffset = NSSize(width: 0, height: -2)
+        shadow.set()
+        NSColor.white.setFill()
+        rect.fill()
+        NSGraphicsContext.restoreGraphicsState()
+        context.saveGState()
+        context.translateBy(x: rect.minX, y: rect.minY)
+        let box = page.bounds(for: view.displayBox)
+        context.scaleBy(x: rect.width / box.width, y: rect.height / box.height)
+        page.draw(with: view.displayBox, to: context)
+        context.restoreGState()
+        _ = document
+    }
+    context.restoreGState()
+}
+
+/// The colour of the pixel at a point (top-left origin, points).
+private func pixel(_ rep: NSBitmapImageRep, _ x: CGFloat, _ y: CGFloat) -> NSColor? {
+    rep.colorAt(x: Int(x * 2), y: Int(y * 2))?.usingColorSpace(.sRGB)
+}
+
+private func isAccent(_ color: NSColor?) -> Bool {
+    guard let color else { return false }
+    let accent = NSColor.controlAccentColor.usingColorSpace(.sRGB)!
+    return abs(color.redComponent - accent.redComponent) < 0.12 && abs(color.greenComponent - accent.greenComponent) < 0.12
+        && abs(color.blueComponent - accent.blueComponent) < 0.12
+}
+
+@MainActor
+private func viewerKitRenders() {
+    let (documents, _) = installViewer()
+    let folder = viewerFolder("renders")
+    let url = folder.appendingPathComponent("Lease agreement.pdf")
+    try? makeLeasePDF().write(to: url)
+    guard let controller = openWindow(url, documents: documents), let window = controller.window else { check(false, "window"); return }
+    let renderer = ThumbnailRenderer.shared
+    wait { controller.sidebar.thumbnails.collectionView.visibleItems().allSatisfy { ($0 as? PageItem)?.thumbnail.image != nil } }
+
+    // main-window.png: the window with the thumbnail sidebar, page 1 selected.
+    if let rep = render(window, "main-window", sidebar: controller.sidebar.view) {
+        let toolbarItem = window.toolbar?.items.first { $0.itemIdentifier == .tools }?.view
+        if let tools = toolbarItem, let frameView = window.contentView?.superview {
+            let frame = tools.convert(tools.bounds, to: frameView)
+            check(isAccent(pixel(rep, frame.minX + 4, frameView.bounds.height - frame.midY)), "the Tools button is the accent colour")
+        }
+        if let first = controller.sidebar.thumbnails.collectionView.item(at: IndexPath(item: 0, section: 0)) as? PageItem,
+           let frameView = window.contentView?.superview {
+            let page = first.thumbnail.convert(first.thumbnail.pageRect, to: frameView)
+            check(isAccent(pixel(rep, page.midX, frameView.bounds.height - page.maxY - 3)), "a 2 pt accent ring round the selected page")
+        }
+    }
+    render(window, "main-window-dark", dark: true, sidebar: controller.sidebar.view)
+
+    // main-window-result.png: ToolsKit's banner in the 44 pt slot under the toolbar.
+    ToolsKitModule.install()
+    Viewer.shared.showBanner(ResultBanner("Done. The file is 72% smaller (6.1 MB → 1.7 MB). Saved next to the original.", emphasis: ["72% smaller"],
+                                          actions: [.showInFinder, .share, .undo]), in: controller.handle)
+    render(window, "main-window-result", sidebar: controller.sidebar.view)
+    if let banner = controller.root.banner { controller.root.hideBanner(banner, animated: false) }
+
+    // organizer.png: 12 pages, three from “Inventory.pdf” in teal, page 3 selected with its hover actions.
+    controller.pageActions.tag(7..<10, as: PageOrigin(fileName: "Inventory.pdf", colorIndex: 0))
+    Viewer.shared.showOrganiser(for: controller.handle, adding: [])
+    guard let organiser = controller.organiser else { check(false, "organiser"); return }
+    organiser.grid.select([2], scroll: false)
+    organiser.reload(selecting: [2])
+    window.layoutIfNeeded()
+    organiser.grid.collectionView.layoutSubtreeIfNeeded()
+    wait { organiser.grid.collectionView.visibleItems().allSatisfy { ($0 as? PageItem).map { $0.thumbnail.image != nil } ?? true } }
+    if let third = organiser.grid.collectionView.item(at: IndexPath(item: 2, section: 0)) as? PageItem { third.mouseEntered(with: NSEvent()) }
+    let gridItems = (0..<3).compactMap { organiser.grid.collectionView.item(at: IndexPath(item: $0, section: 0)) as? PageItem }
+    if gridItems.count == 3 {
+        let a = gridItems[0].thumbnail.convert(gridItems[0].thumbnail.pageRect, to: organiser.grid.collectionView)
+        let b = gridItems[1].thumbnail.convert(gridItems[1].thumbnail.pageRect, to: organiser.grid.collectionView)
+        check(a.width == SPMetrics.Organiser.defaultThumbnailWidth, "160 pt organiser pages (\(a.width))")
+        check(abs(b.minX - a.maxX - SPMetrics.Organiser.gap) < 0.5, "24 pt apart (\(b.minX - a.maxX))")
+        check(abs(a.minY - 28) < 0.5, "28 pt above the first row (\(a.minY))")
+        check(gridItems[2].thumbnail.isSelected && gridItems[2].hoverActions?.isHidden == false, "page 3 selected, ⟲ ⟳ ✕ showing")
+    } else { check(false, "organiser items") }
+    let tagged = organiser.grid.collectionView.item(at: IndexPath(item: 8, section: 0)) as? PageItem
+    check(tagged?.thumbnail.originColor != nil, "pages from Inventory.pdf carry its colour")
+    render(window, "organizer")
+    controller.hideOrganiser()
+
+    // welcome.png: the four targets and three recents, the first target hovered as in the mockup.
+    let now = Date()
+    documents.recentDocuments = [
+        RecentDocument(url: url, lastOpened: Calendar.current.date(byAdding: .day, value: -1, to: Calendar.current.date(bySettingHour: 16, minute: 12, second: 0, of: now)!)!,
+                       pageCount: 12, fileSize: 6_100_000),
+        RecentDocument(url: folder.appendingPathComponent("Tax return 2025.pdf"), lastOpened: now.addingTimeInterval(-3 * 86_400), pageCount: 44, fileSize: 8_000_000),
+        RecentDocument(url: folder.appendingPathComponent("Grandma’s recipes.pdf"), lastOpened: now.addingTimeInterval(-38 * 86_400), pageCount: 6, fileSize: 310_000),
+    ]
+    let welcome = WelcomeWindowController(viewer: Viewer.shared)
+    welcome.welcomeView.targets.first?.isHovered = true
+    if let welcomeWindow = welcome.window {
+        check(welcomeWindow.contentLayoutRect.size == SPMetrics.Welcome.size || welcomeWindow.contentView?.frame.size == SPMetrics.Welcome.size,
+              "760 × 520")
+        check(!welcomeWindow.styleMask.contains(.resizable), "not resizable")
+        let targets = welcome.welcomeView.targets.map(\.frame)
+        check(targets.count == 4 && targets.allSatisfy { $0.size == SPMetrics.Welcome.targetSize } && targets[1].minX - targets[0].maxX == 16,
+              "four 160 × 140 targets 16 pt apart")
+        check(abs(targets[0].minX - (760 - targets[3].maxX)) < 1, "centred")
+        RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+        render(welcomeWindow, "welcome")
+    }
+    _ = renderer
+    window.close()
+}
+
+// MARK: - Performance budgets (lightweight like Preview)
+
+/// The process's memory footprint (what Activity Monitor shows), in bytes.
+private func footprint() -> UInt64 {
+    var info = task_vm_info_data_t()
+    var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<natural_t>.size)
+    let result = withUnsafeMutablePointer(to: &info) {
+        $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count) }
+    }
+    return result == KERN_SUCCESS ? info.phys_footprint : 0
+}
+
+@MainActor
+private func viewerKitPerformance() {
+    let (documents, _) = installViewer()
+    let folder = viewerFolder("performance")
+    let url = folder.appendingPathComponent("Long.pdf")
+    try? makePDF(pages: 500).write(to: url)
+    ThumbnailRenderer.shared.removeAll()
+    var pdfViewSize = NSSize.zero
+    var scale: CGFloat = 1
+
+    autoreleasepool {
+        let rendersBefore = ThumbnailRenderer.shared.renders
+
+        // Open a 500-page PDF and show page 1: under 150 ms.
+        let start = Date()
+        guard let pdf = PDFDocument(url: url) else { check(false, "500-page fixture"); return }
+        let handle = DocumentHandle(url: url, pdf: pdf, undoManager: makeUndoManager())
+        documents.openDocuments.append(handle)
+        let controller = Viewer.shared.makeWindowController(for: handle) as! DocumentWindowController
+        controller.window?.layoutIfNeeded()
+        controller.window?.displayIfNeeded()
+        let shown = Date().timeIntervalSince(start)
+        check(controller.pdfView.currentPage === pdf.page(at: 0) && controller.pdfView.visiblePages.contains(pdf.page(at: 0)!),
+              "page 1 is on screen (\(controller.pdfView.visiblePages.map { pdf.index(for: $0) }))")
+        check(shown < 0.150, String(format: "500-page PDF to page 1 in %.0f ms (budget 150)", shown * 1000))
+        print(String(format: "  open 500 pages → page 1: %.1f ms", shown * 1000))
+
+        // A window from nothing (the share of a cold launch ViewerKit owns): well under 0.5 s.
+        let windowStart = Date()
+        let small = DocumentHandle(url: nil, displayName: "Small", pdf: PDFDocument(data: makePDF(pages: 2))!, undoManager: makeUndoManager())
+        let second = Viewer.shared.makeWindowController(for: small)
+        second.window?.layoutIfNeeded()
+        second.window?.displayIfNeeded()
+        let windowTime = Date().timeIntervalSince(windowStart)
+        check(windowTime < 0.5, String(format: "a document window in %.0f ms (budget 500)", windowTime * 1000))
+        print(String(format: "  new window: %.1f ms", windowTime * 1000))
+        second.window?.close()
+
+        // Thumbnails: only what shows (and a screenful the collection view prepares) renders, all off the main thread.
+        wait { controller.sidebar.thumbnails.collectionView.visibleItems().allSatisfy { ($0 as? PageItem)?.thumbnail.image != nil } }
+        let visible = controller.sidebar.thumbnails.collectionView.visibleItems().count
+        let rendered = ThumbnailRenderer.shared.renders - rendersBefore
+        check(rendered > 0 && rendered <= 40, "thumbnails render lazily (\(rendered) for \(visible) visible of 500)")
+        check(ThumbnailRenderer.shared.offMainRenders >= rendered, "thumbnails render off the main thread")
+
+        // Scrolling: each step of the sidebar and of the document stays inside a 120 Hz frame (8.3 ms).
+        let collection = controller.sidebar.thumbnails.collectionView
+        let clip = controller.sidebar.thumbnails.scrollView.contentView
+        var steps = 0
+        let scrollStart = Date()
+        var y: CGFloat = 0
+        while y < min(collection.frame.height, 40_000) && steps < 200 {
+            clip.scroll(to: NSPoint(x: 0, y: y))
+            controller.sidebar.thumbnails.scrollView.reflectScrolledClipView(clip)
+            collection.layoutSubtreeIfNeeded()
+            controller.window?.displayIfNeeded()
+            y += 180
+            steps += 1
+        }
+        let perStep = Date().timeIntervalSince(scrollStart) / Double(max(steps, 1))
+        check(perStep < 1.0 / 120, String(format: "thumbnail scrolling %.2f ms a step (budget 8.3)", perStep * 1000))
+        print(String(format: "  sidebar scroll: %.2f ms/step over %d steps", perStep * 1000, steps))
+        let documentStart = Date()
+        for index in stride(from: 0, to: 400, by: 4) {
+            if let page = pdf.page(at: index) { controller.pdfView.go(to: page) }
+            controller.pdfView.layoutSubtreeIfNeeded()
+            controller.window?.displayIfNeeded()
+        }
+        let perPage = Date().timeIntervalSince(documentStart) / 100
+        check(perPage < 1.0 / 120, String(format: "document scrolling %.2f ms a step (budget 8.3)", perPage * 1000))
+        print(String(format: "  document scroll: %.2f ms/step", perPage * 1000))
+        pdfViewSize = controller.pdfView.bounds.size
+        scale = controller.pdfView.scaleFactor
+        documents.openDocuments.removeAll { $0 === handle }
+        controller.window?.close()
+    }
+
+    // Idle memory. PDFKit keeps a fixed GPU tile pool (about 120 MB on macOS 26, the same for a 1-page or a 500-page
+    // file) for every PDFView at any zoom but 100 %; every viewer built on PDFKit pays it, Preview included. ViewerKit's
+    // budget is what it adds on top of a bare PDFView showing the same pages at the same zoom: the sidebar and its
+    // thumbnails, the toolbar and the rest of the window.
+    func settled() -> Double { RunLoop.main.run(until: Date().addingTimeInterval(1.5)); return Double(footprint()) / 1_048_576 }
+    var bare = 0.0
+    autoreleasepool {
+        let window = NSWindow(contentRect: NSRect(origin: .zero, size: pdfViewSize), styleMask: [.titled], backing: .buffered, defer: true)
+        window.isReleasedWhenClosed = false
+        let view = PDFView(frame: NSRect(origin: .zero, size: pdfViewSize))
+        view.document = PDFDocument(url: url)
+        view.scaleFactor = scale
+        window.contentView = view
+        window.displayIfNeeded()
+        bare = settled()
+        window.close()
+    }
+    var full = 0.0
+    autoreleasepool {
+        guard let handle = complete(30, { try await documents.open(url) }).flatMap({ try? $0.get() }) else { return }
+        let controller = Viewer.shared.makeWindowController(for: handle) as! DocumentWindowController
+        controller.window?.displayIfNeeded()
+        wait { controller.sidebar.thumbnails.collectionView.visibleItems().allSatisfy { ($0 as? PageItem)?.thumbnail.image != nil } }
+        full = settled()
+        controller.window?.close()
+    }
+    check(full - bare < 40, String(format: "ViewerKit adds %.0f MB over a bare PDFView (budget 40)", full - bare))
+    print(String(format: "  idle footprint: %.0f MB with the 500-page document at %.0f%% (a bare PDFView at that zoom: %.0f MB)",
+                 full, scale * 100, bare))
+}
