@@ -31,12 +31,15 @@ replace?" once per document. `ux.md` §7.
 
 **Engine columns.** `PDFKit` = Apple PDFKit (view, annotations, forms, text, write options) [S]; `Quartz` = Core Graphics
 PDF contexts and rendering [S]; `QPDF` = the object-level engine (§3.1); `Vision` = Apple Vision OCR and document
-detection [S]; `LLM` = llama.cpp + Qwen3.5 (§3.4); `Office` = the conversion registry (§3.2); `Own` = Swift code in
-this repository.
+detection [S]; `Office` = the conversion registry (§3.2); `Own` = Swift code in this repository.
+
+**No AI [D].** Super PDF has no AI tools and ships no language model: no assistant, chat, summaries, translation,
+question generator or generated text of any kind (§3.4). OCR (#92) and document detection (#103) are Apple Vision tools
+like any other. The numbers of the removed tools (#105–#112, #118) stay unused so references elsewhere keep meaning.
 
 ## 1. Feature inventory
 
-Counts: 124 tools in §1 (user-facing tiles or commands) plus the viewer features of §2. Acrobat's tool apps (59 `.aapp` files), 24 plug-ins, menu strings and settings files were inventoried [A]; §1.12 lists the long tail that the headline tools absorb. The required list from the
+Counts: 124 numbers in §1 (user-facing tiles or commands; #105–#112 and #118 are retired, §3.4) plus the viewer features of §2. Acrobat's tool apps (59 `.aapp` files), 24 plug-ins, menu strings and settings files were inventoried [A]; §1.12 lists the long tail that the headline tools absorb. The required list from the
 brief is marked **(req)**.
 
 ### 1.1 Open, view, read
@@ -179,7 +182,7 @@ brief is marked **(req)**.
 | 94 | Check for problems [Preflight (basics)] | Print-production checks: fonts not embedded, images under N dpi, RGB on a CMYK job, transparency, page boxes inconsistent, hairlines, overprint, spot colours, PDF version, file size; report with page links. | QPDF + Quartz analysis | QPDF, Quartz, Own |
 | 95 | Output preview [Output Preview (basics)] | Show separations (C, M, Y, K, spot) by rendering with the other components muted, total ink coverage warning, simulate paper white; display-only. | Quartz render with colour transforms via ColorSync | Quartz, Own |
 | 96 | Flatten transparency / Convert colours [Flattener Preview / Convert Colors] | Rasterize transparent regions at a chosen dpi; convert document colours to sRGB/Gray/a CMYK profile with an OutputIntent. | Quartz re-render with ColorSync | Quartz |
-| 97 | Check accessibility (req: accessibility check/tags) [Accessibility Checker / Make Accessible / Reading Order] | Runs the checks (title, language, tags present, reading order, alt text on images, table headers, heading structure, colour contrast, form field labels, bookmarks for >20 pages); "Fix for me" sets title/language, auto-tags with layout analysis (headings, paragraphs, lists, tables, figures), asks for alt text per image (with an on-device suggestion from the vision-language model when installed, §3.4), reading-order editor by dragging numbered regions; tags tree view. | QPDF structure tree (StructTreeRoot, marked content ids inserted into content streams), layout analysis (§2.4) | QPDF, Own, LLM (optional alt text) |
+| 97 | Check accessibility (req: accessibility check/tags) [Accessibility Checker / Make Accessible / Reading Order] | Runs the checks (title, language, tags present, reading order, alt text on images, table headers, heading structure, colour contrast, form field labels, bookmarks for >20 pages); "Fix for me" sets title/language, auto-tags with layout analysis (headings, paragraphs, lists, tables, figures), asks for alt text per image (a "Describe this image" field), reading-order editor by dragging numbered regions; tags tree view. | QPDF structure tree (StructTreeRoot, marked content ids inserted into content streams), layout analysis (§2.4) | QPDF, Own |
 | 98 | Repair | Rebuild cross-reference, recover objects, fix broken streams; reports what was fixed. | QPDF recovery mode | QPDF |
 | 99 | Fast web view [Linearize] | Rewrite as linearized for page-at-a-time loading. | QPDF | QPDF |
 | 100 | Fonts | Embed all fonts available on the Mac that the file references but did not embed (subset); list fonts. | Core Text + own subsetter + QPDF | Own, QPDF |
@@ -193,18 +196,10 @@ brief is marked **(req)**.
 | 103 | Scan with the Mac's camera / from a photo | Point a photo (or the built-in camera, lower quality) at a document: Vision finds the document's corners, perspective-corrects, enhances. | Vision `VNDetectDocumentSegmentationRequest` [S] + Core Image perspective correction | Vision, Core Image |
 | 104 | Clean up a scan | Deskew, remove black borders, despeckle, whiten, auto-rotate by text orientation, split facing pages, reorder duplex scans. | Core Image + Vision orientation | Core Image, Vision |
 
-### 1.11 Understand with AI (all on device)
+### 1.11 (Retired: AI tools)
 
-| # | Tool | Behaviour | Approach | Engine |
-|---|---|---|---|---|
-| 105 | Summarise (req: Summarizer) | One-paragraph, bullet points or "explain like I'm new" summary of the document or the selection; copy, save as note page, or insert as a comment. Long documents are summarised page-group by page-group then merged (map-reduce). | LLM over extracted text (OCR first if needed) | LLM |
-| 106 | Chat with this PDF (req) | A side panel chat answering from the document with page citations (click to jump); works across the open documents; conversation saved with the file in app data; "Make a list of every date", "What's the total?", "Where does it talk about X?". Retrieval: FTS5 + embeddings per page chunk, RRF-fused, top chunks into the prompt. | LLM + embeddings + SQLite FTS5 | LLM, Own |
-| 107 | AI assistant (req) | The same chat, scoped to actions: "make this smaller and send it to Priya", "rotate the sideways pages", "black out all phone numbers" — the model picks tools from the registry via tool-calling with a confirm step for anything that writes. | LLM tool-calling (GBNF-constrained JSON) over the tool registry | LLM, Own |
-| 108 | Translate (req) | Translate the selection, a page or the whole document into a chosen language; result shown side by side or as a new PDF with the same layout (text blocks re-set in the translated language; images untouched) or as plain text. macOS 15+: Apple Translation framework (on-device language packs the system downloads once, `TranslationSession` [S, macOS 15]); macOS 14: the local LLM. | Translation framework → LLM fallback; layout re-set via Edit-text engine | Translation, LLM, QPDF |
-| 109 | Make questions (req: Question generator) | Generates quiz/study questions (multiple choice, short answer, flashcards) from the document or selection with answers and page references; export as PDF or CSV (Anki-style). | LLM with a JSON grammar | LLM |
-| 110 | Explain / rewrite selection | "Explain this", "Simplify", "Proofread my comment", "Write a reply" on any selection or comment. | LLM | LLM |
-| 111 | Suggest alt text | Image descriptions for the accessibility fixer when a small vision-language model is installed (optional 1–2 GB download, §3.4); otherwise a "Describe this image" text field. | LLM (VLM variant) | LLM |
-| 112 | Name this file / fill properties | Suggest a title, keywords and a file name from the content (used by Document info and Save). | LLM | LLM |
+Summarise (#105), Chat with this PDF (#106), the AI assistant (#107), Translate (#108), Make questions (#109), Explain /
+rewrite (#110), Suggest alt text (#111) and Name this file (#112) are not built: Super PDF has no AI (§3.4).
 
 ### 1.12 The long tail (Acrobat features absorbed into the tools above or small on their own)
 
@@ -215,7 +210,6 @@ brief is marked **(req)**.
 | 115 | Search a folder | "Search in…" across a folder of PDFs with a local full-text index (Acrobat "Full Text Index with Catalog" / Advanced Search across local documents); results grouped by file. | SQLite FTS5 index per chosen folder, refreshed on open | Own |
 | 116 | Snapshot | Copy an area as an image (Acrobat "Take a Snapshot", Preview's Rectangular Selection + Copy). | PDFView selection render | PDFKit |
 | 117 | Comment summary | "Summarise comments to PDF…" with connector lines or sequence numbers, source + summary pages or summary only, font size (Acrobat's options [A]). | Own renderer | Quartz |
-| 118 | Audio summary / summary slide | "Make an audio summary" (summary read by the system voice into an `.m4a`) and "Make a summary slide" (`.pptx` with key points) — the local stand-ins for Acrobat's Generate podcast / Generate presentation. | LLM + AVSpeechSynthesizer file output + pptx writer | LLM, Own |
 | 119 | Web page → PDF with linked pages | "Also include linked pages (1–2 levels, same site)" in Web page → PDF, with a bookmark per page (Acrobat "Create PDF from Web Page", levels, stay on same server). User-initiated fetch only. | WebKit crawl with limits | WebKit |
 | 120 | Printer marks and hairlines | Add trim/bleed/registration marks and page information; thicken hairlines below a threshold (Acrobat Print Production). | Quartz overlay; content-stream line-width rewrite | Quartz, QPDF |
 | 121 | New from template | Blank, Letter, Invoice, Meeting notes, Sign-in sheet, Grid paper — simple built-in PDF templates with form fields (Acrobat "Create from template"). | Bundled PDFs | Own |
@@ -248,7 +242,7 @@ PDFKit provides characters with bounds; the layout engine groups them into words
 (size/weight), lists (bullet glyphs and indents), tables (ruling lines from path operators and alignment grids),
 figures (image XObjects and vector clusters) and reading order (column-aware, top-left to bottom-right with header/
 footer exclusion). Scanned pages go through Vision first. This engine feeds Edit text, PDF → Word/Excel/PowerPoint/
-HTML/EPUB, Reflow, Compare, auto-tagging, form field detection and chat chunking. It is one module (`LayoutKit` in
+HTML/EPUB, Reflow, Compare, auto-tagging and form field detection. It is one module (`LayoutKit` in
 `ARCHITECTURE.md`).
 
 ### 2.5 Spotlight, Quick Look, Services, Shortcuts
@@ -318,43 +312,26 @@ will open to export this file" before it happens; the app is told to quit afterw
 **PDF → Office is always native** (§1.4 #50–52): LibreOffice imports PDF as drawings, not documents, so it does not
 help, and Acrobat's own export is the only comparable product. The layout-analysis engine (§2.4) is the investment.
 
-### 3.3 OCR, document detection, translation: Apple frameworks [D]
+### 3.3 OCR and document detection: Apple frameworks [D]
 Vision `VNRecognizeTextRequest` (accurate level, automatic language detection, custom words from the document's
 existing text) [S] is the OCR engine: no download, 20+ languages, fast on the Neural Engine. The invisible text layer
-is written by us (QPDF) so positions are exact and the result works in every reader. Translation uses the Translation
-framework on macOS 15+ (system-managed on-device language packs; the first use triggers Apple's own download sheet)
-and the local LLM on macOS 14 or for languages the system lacks. Reading aloud uses AVSpeechSynthesizer.
+is written by us (QPDF) so positions are exact and the result works in every reader. Reading aloud uses
+AVSpeechSynthesizer.
 
-### 3.4 AI: llama.cpp + Qwen3.5, Super Flow's stack [D]
+### 3.4 No AI [D]
 
-Adapted from Super Flow (`docs/specs/local-models.md` §3, §5, §9; `cleanup-models.md`), copied into this repository as
-engine modules with provenance comments (no shared package, `ARCHITECTURE.md` "Engines").
-
-| Role | Model | Size | Why |
-|---|---|---|---|
-| Default (summaries, chat, questions, assistant, translation fallback) | **Qwen3.5-2B Q4_K_M** (Apache-2.0, unsloth GGUF, SHA-256 `aaf42c8b…9223`) | 1.28 GB | Measured in Super Flow at 108–122 tok/s decode on M4 Pro, 1.54 GB RSS; 201 languages; non-thinking by default. |
-| Better (Macs with ≥ 16 GB) | **Qwen3.5-4B Q4_K_M** (SHA-256 `00fe7986…1f4e`) | 2.74 GB | 51–58 tok/s, 3.2–3.7 GB RSS; prefills a 12.8k-token document in 20.9 s on M4 Pro; better long-document answers. |
-| Embeddings (Chat with PDF retrieval) | Qwen3-Embedding-0.6B Q8_0 | ~0.6 GB | Same runtime; one vector per page chunk (~400 tokens) cached in SQLite as BLOBs. |
-| Optional: alt text | a small VLM (Qwen3.5-VL class, GGUF + mmproj) | 1–2 GB | Only when the user turns on "Describe images for me" in Settings. |
-| System option (macOS 26) | Apple Foundation Models | 0 | 4,096-token context: usable for selection-level tasks and as a map step; listed in Settings when `.available`. |
-
-**Silent guarded auto-download** (Super Flow `AutoDownloadPolicy`, copied): the default model downloads in the
-background after first launch only when the network path is not expensive or constrained, the Mac is not in Low Power
-Mode, free disk is above the model size × 1.1 plus 2 GB, and the user has not turned "Download AI models
-automatically" off (on by default; the Welcome window states it in one line with "Not now"). Resume on relaunch
-(`.partial` + HTTP Range), streaming SHA-256, atomic move. Until the model is present, AI tiles show "Ready in a few
-minutes (downloading 1.3 GB)" with a progress bar and remain clickable (they queue). Models live in
-`~/Library/Application Support/Super PDF/Models/`. Chat context: 16k tokens for 2B, 32k for 4B; longer documents go
-through retrieval. Prompts are this repository's own wording. Nothing about a document ever leaves the Mac.
+Product decision: Super PDF ships no language model and no AI tools. The brief's AI items (AI assistant, chat,
+summarizer, translate, question generator) and Acrobat's AI Assistant, generative summaries and podcast/presentation
+generation are not reproduced (§5). There is nothing to download for any tool, no model storage, and no Settings pane
+for models. The owner's decision; the alternative that lost was Super Flow's on-device llama.cpp stack (Qwen3.5).
 
 ### 3.5 What touches the network, exhaustively
-1. Model downloads from Hugging Face (`/resolve/<commit>/…`, pinned), on the policy above.
-2. The LibreOffice helper download, only when the user clicks Install.
-3. Update checks against this repository's GitHub Releases (Super Flow's `UpdateKit`, opt-out in Settings).
-4. Fetching a URL the user typed into "Web page → PDF".
-5. Optional RFC 3161 timestamps when the user turns on "Add a trusted timestamp" in certificate signing and names a
+1. The LibreOffice helper download, only when the user clicks Install.
+2. Update checks against this repository's GitHub Releases (Super Flow's `UpdateKit`, opt-out in Settings).
+3. Fetching a URL the user typed into "Web page → PDF".
+4. Optional RFC 3161 timestamps when the user turns on "Add a trusted timestamp" in certificate signing and names a
    server. Off by default.
-Everything else, including every AI feature, works with Wi-Fi off. `PRIVACY.md` repeats this list.
+Everything else works with Wi-Fi off. `PRIVACY.md` repeats this list.
 
 ### 3.6 Digital signatures without a server [D]
 `swift-certificates` + `swift-asn1` (Apache-2.0, Apple) generate self-signed certificates and produce/verify CMS
@@ -379,7 +356,7 @@ no AATL download (that list is Adobe's and online). Request signatures (#84) is 
 | Watermark | 66 | Form filler | 80 |
 | Share | 17 | Sign PDF | 82 |
 | Request signatures | 84 | Unlock / Protect / Flatten | 87 / 86 / 70 |
-| AI assistant, Chat, Summarizer, Translate, Question generator | 107, 106, 105, 108, 109 | Scanner | 101–104 |
+| AI assistant, Chat, Summarizer, Translate, Question generator | not built (§3.4) | Scanner | 101–104 |
 | Compare files | 13 | Bookmarks/outline | 6, 7 |
 | Headers/footers, Bates | 64, 65 | Measure | 15 |
 | Accessibility check/tags | 97 | Optimize | 91 |
@@ -396,7 +373,8 @@ no AATL download (that list is Adobe's and online). Request signatures (#84) is 
 - XFA forms: displayed static with a notice.
 - Acrobat Distiller / PostScript: `.ps`/`.eps` convert through Quartz only when macOS can rasterize them; otherwise
   LibreOffice (Draw imports EPS).
-- Adobe Firefly generative features, Adobe Express templates, PDF Spaces/Knowledge Base, Analyzer: not included; the local AI tools (#105–112, #118) cover summaries, chat, questions, translation and audio/slide summaries.
+- AI: Acrobat AI Assistant, generative summaries, Generate podcast / presentation, Adobe Firefly generative features,
+  Adobe Express templates, PDF Spaces/Knowledge Base, Analyzer: not included; Super PDF has no AI (§3.4).
 - Microsoft Purview sensitivity labels, SharePoint check-in/out, Dropbox, email accounts inside the app (SendMail): not included; the share sheet and Finder cover them.
 - Geospatial measuring, 3D measuring, trap presets, ink manager, JDF: not included (print-production basics only).
 - Articles, page templates, legacy multimedia renditions: not included.

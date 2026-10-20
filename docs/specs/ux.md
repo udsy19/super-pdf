@@ -44,7 +44,6 @@ rearrange, dropped files combine, dragged-out pages become a new PDF.
 | Extract pages | drag thumbnails to the Desktop |
 | Convert any file to PDF | drop it on the Dock icon or the window: it converts and opens |
 | Sign | Markup → Sign (Preview's flow), or Tools → Sign |
-| Ask about the document | ⌥⌘A or Tools → Chat with this PDF, then type |
 
 ## 2. Window anatomy
 
@@ -138,10 +137,9 @@ SF Symbols throughout, the same ones Preview and the menus use: `sidebar.leading
 `rotate.left`, `crop`, `highlighter`, `book`, `list.bullet.indent`, `square.grid.2x2` (Tools), `square.and.arrow.up`,
 `doc.on.doc` (Combine), `arrow.down.right.and.arrow.up.left` (Make smaller), `text.viewfinder` (Recognise text),
 `text.redaction` (Black out), `lock` / `lock.open`, `signature`, `person.2.badge.key` (Request signatures),
-`doc.text.magnifyingglass` (Compare), `checkmark.seal` (Check), `sparkles` (Understand), `camera` / `scanner`,
+`doc.text.magnifyingglass` (Compare), `checkmark.seal` (Check), `camera` / `scanner`,
 `textformat` (Edit text), `number` (Number pages), `drop` (Watermark), `doc.richtext` (Word), `tablecells` (Excel),
-`rectangle.on.rectangle` (PowerPoint), `photo` (Images), `archivebox` (PDF/A), `globe` (Translate),
-`questionmark.bubble` (Make questions), `bubble.left.and.text.bubble.right` (Chat), `speaker.wave.2` (Read aloud).
+`rectangle.on.rectangle` (PowerPoint), `photo` (Images), `archivebox` (PDF/A), `speaker.wave.2` (Read aloud).
 
 ### 2.5 Motion
 
@@ -222,9 +220,9 @@ encrypted document asks for the password first; dropping never overwrites a file
 - Sections in order, each with its colour (§2.3): **Pages**, **Convert**, **Edit**, **Mark up**, **Sign & fill**,
   **Protect**, **Fix & check**, **Understand**, **Scan**. Order is the order of a document's life: get the pages right,
   convert, change, mark, sign, protect, check, understand.
-- Tiles that need something the Mac does not have yet are still shown, with a small grey badge: "Downloading…" (AI
-  model), "Needs iPhone nearby" (Continuity scan), "Install converter" (LibreOffice for `.ods`). Clicking explains in
-  the panel; nothing is hidden, nothing is greyed out without a reason.
+- Tiles that need something the Mac does not have yet are still shown, with a small grey badge: "Needs iPhone nearby"
+  (Continuity scan), "Install converter" (LibreOffice for `.ods`). Clicking explains in the panel; nothing is hidden,
+  nothing is greyed out without a reason.
 - Right-click a tile → "Add to Toolbar" (one-click favourites) and "Add to Dock Menu".
 - Keyboard: arrows move between tiles, Return opens, ⌘1–9 jump to sections.
 - The same tiles appear in the **Tools** menu as submenus (Tools › Pages › Rotate Pages…), for people who live in menus,
@@ -282,16 +280,12 @@ encrypted document asks for the password first; dropping never overwrites a file
 | Fix & check | Check accessibility | Make the PDF work with screen readers | tags, alt text, reading order, pdf/ua, 508 | 97 |
 | Fix & check | Check for printing | Find problems before sending to a printer | preflight, print production, separations, cmyk, bleed | 94, 95, 96 |
 | Fix & check | Repair | Fix a file that won't open properly | damaged, corrupt, recover, fonts, fast web view | 98, 99, 100 |
-| Understand | Summarise | Get the short version | summary, tl;dr, key points | 105 |
-| Understand | Chat with this PDF | Ask questions, get answers with page numbers | ai assistant, ask, question, find | 106, 107 |
-| Understand | Translate | Read it in another language | language, spanish, hindi | 108 |
-| Understand | Make questions | Quiz yourself on what's in here | flashcards, study, quiz, question generator | 109 |
 | Understand | Read aloud | Hear the document read to you | speak, voice, listen, audio | 3 |
 | Scan | Scan with iPhone | Use your iPhone's camera as a scanner | continuity camera, phone, document camera | 101 |
 | Scan | Scan with a scanner | Use a flatbed or sheet-fed scanner | image capture, twain, flatbed | 102 |
 | Scan | From a photo | Straighten and clean up a photo of a page | perspective, deskew, picture | 103, 104 |
 
-54 tiles; the remaining features in `features.md` are reached from inside these panels, the sidebar modes or the menus.
+52 tiles; the remaining features in `features.md` are reached from inside these panels, the sidebar modes or the menus.
 
 ## 5. Tool panels
 
@@ -353,7 +347,6 @@ encrypted document asks for the password first; dropping never overwrites a file
 | **C. Live-preview editor** | Watermark, Headers & footers, Number pages, Bates, Background, Crop, Stamps, Links | Controls on the left panel, effect drawn on the page immediately, drag handles on the page where position matters. |
 | **D. Mode** | Edit text & images, Draw & shapes, Highlight & notes, Fill a form, Make a form, Measure, Black out (marking), Sign (placing), Rearrange (organiser), Compare | The panel is a thin palette (tool buttons + properties) and the document becomes interactive; the footer button is "Done". |
 | **E. Convert** | To Word/Excel/PowerPoint/text, Any file → PDF, Images → PDF, Combine | Input list (drop zone when the tool accepts files), output format/location, one line that names the engine, button "Save as Word…" (opens a save panel defaulting next to the original). |
-| **F. Conversation** | Chat with this PDF, Summarise, Translate, Make questions | Output area with streaming text and page citations, an input field at the bottom, chips with suggested prompts. |
 | **G. Flow** | Request signatures, Scan, Certificates | Up to three numbered steps in the same panel (a segmented "1 Who · 2 Where · 3 Send" at the top), back/next in the footer. |
 
 ### 5.3 Panel specifications
@@ -490,17 +483,10 @@ changed"); ‹ › navigate; Button **Save comparison report…**.
 
 **Check accessibility / Check for printing** (B with a results list) — Button **Check** → results grouped Pass / Needs
 attention / Failed with "Fix" buttons where automatic ("Set the language to English", "Add a title", "Tag the
-document"), "Describe this image" rows open a field with an on-device suggestion when available. Report export.
+document"), "Describe this image" rows open a field for the alt text. Report export.
 
 **Repair** (A) — line with what's wrong when known ("The file's index is damaged"); "Also embed missing fonts". Button
 **Repair and save copy**.
-
-**Summarise / Chat / Translate / Make questions** (F) — model status at the top on first use ("Getting the AI model
-ready · 1.3 GB · 2 min left"); suggested chips ("Summarise", "What are the key dates?", "Explain page 4 simply");
-answers stream with page chips "p. 4" that jump and highlight; copy / save as note page / insert as comment under
-each answer; Translate adds a language popup and **Translate selection** · page · whole document with "Make a
-translated PDF" (layout kept) or "Show text"; Make questions adds type (Multiple choice · Short answer · Flashcards),
-count, Button **Make 10 questions** → results with "Save as PDF" / "Save for Anki (CSV)".
 
 **Read aloud** (A) — play/pause, speed, voice; highlights the sentence; Button **Read from this page**.
 
@@ -544,15 +530,12 @@ Shown when the app opens with no document (and via Window › Welcome). Non-resi
 │   ┌─┐ Tax return 2025.pdf           Monday                 44 pages  8.0 MB│
 │   ┌─┐ Grandma's recipes.pdf         12 Sep                  6 pages  310 KB│
 │                                                                            │
-│   ○ AI tools are getting ready (downloading 1.3 GB, about 4 min). Not now  │
 └────────────────────────────────────────────────────────────────────────────┘
 ```
 
 Targets are 160 × 140, 14 pt radius, icon 36 pt in the category colour, label 15 semibold, hint 11 secondary. Dropping
 files anywhere in the window acts like "Combine files" (one file: open/convert). Recent rows: 36 pt, thumbnail 24 pt,
-name 13, metadata 11 secondary; right-click → Show in Finder / Remove from list. The model-download line (bottom, 11
-pt) appears only during the first download and has "Not now" (pauses, keeps the tiles with a "Downloading" badge
-later when clicked).
+name 13, metadata 11 secondary; right-click → Show in Finder / Remove from list.
 
 Empty recents: the list area shows "Files you open will show up here." in `tertiaryLabelColor`.
 
@@ -615,22 +598,18 @@ Highlight · Sign ▾ · Note ‖ Shape Style · Border Colour · Fill Colour ·
 additions at the end, separated: **Stamp ▾** and **Measure ▾**. Shortcuts as Preview (⌃⌘H highlight, ⌃⌘U underline,
 ⌃⌘S strike, ⌃⌘R rectangle, ⌃⌘O oval, ⌃⌘I line, ⌃⌘A arrow, ⌃⌘T text, ⌃⌘N note, ⌃⌘L loupe).
 
-### 6.5 Chat side panel (Understand)
+### 6.5 (Retired: chat side panel)
 
-Opens on the right like a tool panel but 360 pt wide; messages in bubbles (user accent 12%, assistant plain), 13 pt;
-page citation chips `p. 4` (11 pt, accent) under answers; input field 36 pt with ↑ send; "New chat" and the model name
-in the header's secondary line ("Qwen3.5 2B · on this Mac"). Tool-call cards (assistant archetype): "Rotate 3 pages →
-Do it / Not now".
+Super PDF has no AI tools (`features.md` §3.4), so there is no chat panel. The section number stays so references to
+§6.6 keep meaning.
 
 ### 6.6 Settings (⌘,)
 
 Panes: **General** (open files in tabs, default save behaviour: Ask / Always save a copy / Replace, author name,
 default zoom), **Tools** (favourites in toolbar, recently-used row on/off, show jargon names in hints on/off for
-experts), **AI** (model list with sizes and status, "Download AI models automatically" on, "Describe images for me"
-off, Apple Intelligence option when available, storage used, Remove), **Converters** (LibreOffice: Not installed ·
-Install… / Installed at … · Remove; Office apps found: Word, Pages…), **Signatures** (my certificate, trusted people,
-timestamp server off), **Scanning** (default dpi/colour), **Privacy** (the exhaustive network list from `features.md`
-§3.5, "Check for updates" toggle).
+experts), **Converters** (LibreOffice: Not installed · Install… / Installed at … · Remove; Office apps found: Word,
+Pages…), **Signatures** (my certificate, trusted people, timestamp server off), **Scanning** (default dpi/colour),
+**Privacy** (the exhaustive network list from `features.md` §3.5, "Check for updates" toggle).
 
 ## 7. Copy: results, saving, errors, empty states
 
@@ -646,7 +625,7 @@ timestamp server off), **Scanning** (default dpi/colour), **Privacy** (the exhau
 ### 7.2 Output naming
 
 `<name> (<what>).<ext>` in the same folder; suffixes: smaller, blacked out, protected, no password, locked in, signed,
-archive, clean, repaired, part 1…, pages 3-5, translated-<lang>. Collisions get " 2". The location is always shown in
+archive, clean, repaired, part 1…, pages 3-5. Collisions get " 2". The location is always shown in
 the panel and changeable with "Change…".
 
 ### 7.3 Result banners
@@ -680,8 +659,6 @@ button that fixes it when possible.
 | Needs LibreOffice | Spreadsheets saved as ".ods" need the free Office converter (LibreOffice, about 800 MB). | Install… / Not now |
 | Needs an Office app | To convert this with full fidelity, Excel needs to open it briefly. | Use Excel / Use the built-in converter (simpler result) |
 | iWork app missing | Pages isn't installed, so only the preview inside the file can be used (usually the first page). Pages is free on the Mac App Store. | Continue / Get Pages |
-| AI model not ready | The AI model is still downloading (1.3 GB, about 4 min left). Your question is queued. | Wait / Not now |
-| No disk space | Needs 1.5 GB free to download the AI model. | Open Storage settings |
 | No iPhone | No iPhone or iPad nearby. Make sure it's unlocked, close by, and signed in to the same Apple Account. | Try again |
 | No scanner | No scanner found. Check that it's on and connected. | Try again |
 | Fonts missing (edit text) | The font "Garamond Premier" isn't on this Mac, so new text uses "Georgia" instead. | OK |
@@ -704,7 +681,6 @@ button that fixes it when possible.
 | Search | Not found (Preview) / No results for "%@". |
 | Comments list filter | Nothing unresolved. |
 | Signatures I asked for | No requests yet. Use Tools › Request signatures to send a document for signing. |
-| Chat | Ask anything about "Report.pdf". (chips) |
 | Tools search | Nothing called "%@". Try "smaller", "sign" or "Word". |
 | Compare | Drop the other version here, or choose it. |
 
@@ -719,7 +695,7 @@ Camera…, Import from Scanner…, Export As…, Export as PDF…, Print… ⌘P
 ⇧⌘A, Customize Toolbar…, Slideshow ⇧⌘F, Enter Full Screen ⌃⌘F; Go: Up/Down, Previous/Next Item ⌥↑/↓, Go to Page…
 ⌥⌘G, Back/Forward ⌘[/]; Tools: **All Tools… ⌘T**, Show Inspector ⌘I, Show Magnifier `, Annotate ▸ (Preview's list),
 Add Bookmark ⌘D, Rotate Left ⌘L, Rotate Right ⌘R, Crop ⌘K, then one submenu per Tools section with every tile;
-Window: tabs, Welcome, Signature Requests; Help). New shortcuts: ⌘T Tools, ⌥⌘A Chat, ⌥⌘6 Page Organiser, ⌘⇧S Save a
+Window: tabs, Welcome, Signature Requests; Help). New shortcuts: ⌘T Tools, ⌥⌘6 Page Organiser, ⌘⇧S Save a
 copy.
 
 ## 9. Accessibility of the app

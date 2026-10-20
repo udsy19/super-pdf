@@ -5,7 +5,7 @@ const path = require("path");
 const SRC = __dirname;
 const OUT = path.join(SRC, "..");
 const files = fs.readdirSync(SRC).filter((f) => f.endsWith(".html")).sort();
-const darkToo = new Set(["main-window.html", "tools-sheet.html", "panel-chat.html"]);
+const darkToo = new Set(["main-window.html", "tools-sheet.html"]);
 module.exports = async (page) => {
   await page.viewport(1240, 900, 2);
   for (const f of files) {

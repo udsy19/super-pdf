@@ -23,13 +23,12 @@
 
 Super PDF is a free, open-source macOS PDF app that does what Adobe Acrobat does — combine, organise, convert, edit,
 mark up, sign, request signatures, protect, redact, OCR, compress, compare, fill and build forms, check accessibility,
-summarise, chat, translate, scan — with the window of Apple's Preview: one document, one thumbnail sidebar, one
+scan — with the window of Apple's Preview: one document, one thumbnail sidebar, one
 **Tools** button. Every tool is one friendly tile with a plain-language name ("Make smaller", not "Optimize PDF") that
 opens one small panel with one big button. The original file is never overwritten without asking; every change can be
 undone.
 
-There is no account, no server and no telemetry. OCR runs on Apple Vision, AI on a local llama.cpp model (Qwen3.5)
-that downloads once in the background, translation on Apple's on-device Translation framework. Office conversions
+There is no account, no server, no telemetry and no AI. OCR runs on Apple Vision. Office conversions
 run natively where macOS can do them and through an optional, auto-detected LibreOffice helper where it cannot
 (see `docs/specs/features.md` §3).
 
@@ -52,10 +51,10 @@ swift run SuperPDFSelfTest      # headless checks
 scripts/build-app.sh            # Super PDF.app
 ```
 
-Requires macOS 14 or later. Apple silicon recommended for the AI tools; everything else runs on Intel too.
+Requires macOS 14 or later, on Apple silicon or Intel.
 
 ## Licence
 
-MIT. Third-party engines keep their own licences (listed in `THIRD_PARTY_NOTICES.md` once the build lands): llama.cpp
-(MIT), QPDF (Apache-2.0), swift-certificates (Apache-2.0), Qwen3.5 weights (Apache-2.0). LibreOffice (MPL-2.0) is never
+MIT. Third-party code keeps its own licences: QPDF (Apache-2.0) and libjpeg-turbo (IJG, BSD-3-Clause, zlib), listed
+in `THIRD_PARTY_NOTICES.md`; swift-certificates and swift-asn1 (Apache-2.0). LibreOffice (MPL-2.0) is never
 bundled; it is detected on the Mac or installed by the user on request.

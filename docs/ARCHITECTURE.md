@@ -11,21 +11,18 @@ in `docs/specs/features.md` (behaviour, approach, engine). Section references in
 
 ## Engines: self-contained, adapted from the sister apps (decision)
 
-Super Flow ships the llama.cpp engine, the model downloader with its guarded automatic queue, and the GitHub Releases
-updater that this app needs. As in Super Granola, the engines are **copied into this repository as engine modules**
+Super Flow ships the GitHub Releases updater that this app needs. As in Super Granola, the engines are **copied into this repository as engine modules**
 with provenance comments; there is no shared package and no path dependency on a sibling checkout (the sibling apps are
 app packages whose modules are not products). A copy is a fork: fixes are ported by hand.
 
 | Engine module | Contents | Source |
 |---|---|---|
-| `LLMKit` | llama.cpp engine: load/unload, prefix snapshots, streaming generation, cancellation, GBNF/JSON-schema grammars, token counting, embeddings; chat template handling for Qwen3.5 (thinking off) | Super Flow `CleanupKit/LlamaEngine.swift`, `LanguageModel.swift` (engine part); local-models §3, §5, §9 |
-| `ModelKit` | Downloader (resume, streaming SHA-256, import), storage, `AutoDownloadPolicy` + `AutoDownloadGate` + `SystemDownloadEnvironment` (network path, Low Power Mode, free disk), disk usage; the catalog is passed in | Super Flow `SpeechKit/{ModelManager,ModelDownloader,ModelFiles,AutoDownload}.swift` |
 | `UpdateKit` | GitHub Releases updater: check, SHA-256 + code-signature verification, stage, swap on quit or idle | Super Flow `UpdateKit/*` |
 | `PDFModelKit` | Swift wrapper over **QPDF** (features §3.1): document open/repair/save (incremental or full), object access, page tree ops, content-stream tokenizer, overlay/underlay, embedded files, name trees, page labels, outlines, structure tree, encryption (R6), linearization, image stream read/replace, signature placeholders and ByteRange patching. QPDF itself is a `binaryTarget` xcframework built by `scripts/build-qpdf.sh` (CMake, static libjpeg-turbo + system zlib) and published on this repository's Releases, pinned by checksum, as Super Flow pins llama.cpp | new; QPDF 12 (Apache-2.0) |
 
 Rules for the copies: every copied file starts with `// Adapted from <repo> <path> (commit <sha>)` plus what changed;
 engines carry no app policy (no `Services`, no `Defaults`, no UI strings); configuration comes in through initialisers;
-each engine has a self-test file in `SuperPDFSelfTest`. The llama.cpp pin (b11721) and QPDF pin live in `Package.swift`.
+each engine has a self-test file in `SuperPDFSelfTest`. The QPDF pin lives in `Package.swift`.
 
 ## Modules
 
@@ -35,22 +32,21 @@ Sources/
                      ToolRequest/ToolResult, Scope, OutputPolicy, ConversionJob, SignatureRequest…), service protocols,
                      the Services registry, SuperPDFPaths, typed Defaults + every settings key (ux §6.6), the TOOL
                      CATALOG as data (ux §4.1: id, section, name, hint, synonyms, SF Symbol, archetype, features #),
-                     design tokens SPColor/SPFont/SPMetrics/SPMotion (ux §2.1–2.5), model catalog + presets
-                     (features §3.4), converter registry table as data (features §3.2), strings (ux §7), Keychain
+                     design tokens SPColor/SPFont/SPMetrics/SPMotion (ux §2.1–2.5), converter registry table as data (features §3.2), strings (ux §7), Keychain
                      helper, logging, undo helpers
   PDFModelKit/       engine: QPDF wrapper (see Engines)
   LayoutKit/         text & layout analysis engine (features §2.4): characters → words/lines/paragraphs/columns/
                      headings/lists/tables/figures/reading order; works on PDFKit text positions and on Vision OCR
-                     output; produces a LayoutDocument used by convert, edit, reflow, compare, tagging, forms, chat
+                     output; produces a LayoutDocument used by convert, edit, reflow, compare, tagging, forms
   RenderKit/         Quartz rendering & writing: page rasterization at dpi, PDF/A and PDF/X contexts, booklet/N-up
                      imposition, "print as image", contact sheets, colour conversion via ColorSync, output preview
   DocumentKit/       NSDocument subclass (PDFDocument wrapper + PDFModelKit handle), open/repair/password flow, save
                      policy ("Save a copy / Replace", ux §7.1), versions, output naming (ux §7.2), undo stack for page
-                     operations, recent documents, document-level state (view state, chat threads)
+                     operations, recent documents, document-level state (view state)
   ViewerKit/         main window: toolbar (ux §2.1), sidebar modes (thumbnails with drag/drop, contents, notes,
                      bookmarks, attachments, search, signatures), PDFView host, reader mode, read aloud, find,
                      page organiser (ux §6.2), result banner, welcome window (ux §6.1), drag & drop (ux §3)
-  ToolsKit/          the Tools sheet (ux §4), the panel host and archetypes A–G (ux §5), scope control, live
+  ToolsKit/          the Tools sheet (ux §4), the panel host and archetypes A–E and G (ux §5), scope control, live
                      preview overlay (PDFPageOverlayViewProvider), progress/error presentation, favourites, frecency,
                      search with synonyms; registers every tool's panel from the catalog + the implementing service
   PagesKit/          page tools (features §1.2): combine, rearrange, rotate, delete, extract (file promises), split,
@@ -82,18 +78,13 @@ Sources/
                      + auto-tag + reading order editor + alt text
   ScanKit/           Continuity Camera (NSMenuItemImportFromDeviceIdentifier + NSServicesMenuRequestor), Image Capture
                      scanners (ICScannerDevice/IKScannerDeviceView), document detection from photos (Vision), clean-up
-  IntelligenceKit/   on-device AI over LLMKit: summarise (map-reduce), chat with citations (FTS5 + embeddings RRF),
-                     assistant tool-calling over the tool catalog with confirm-before-write, translate (Translation
-                     framework on macOS 15+, LLM fallback; layout re-set via EditKit), questions/flashcards, explain/
-                     rewrite, alt-text suggestions, title/keywords, audio summary, summary slide; every prompt lives
-                     here in our own words with golden fixtures
   BatchKit/          "Do this to many files": step pipelines over the tool registry, routines, Finder Quick Actions
                      (app extension target), App Intents (one per file-level tool), PDF Services print item
-  SettingsKit/       settings window panes (ux §6.6), model management UI (ModelKit), converters pane (LibreOffice
+  SettingsKit/       settings window panes (ux §6.6), converters pane (LibreOffice
                      install/remove, detected apps), signatures pane, privacy pane
-  LLMKit/, ModelKit/, UpdateKit/, PDFModelKit/
+  UpdateKit/, PDFModelKit/
                      engines (see "Engines"): no app policy
-  SuperPDF/          app target: launch sequence, module wiring, Services.models / Services.updates, main menu
+  SuperPDF/          app target: launch sequence, module wiring, Services.updates, main menu
                      (Preview's tree + Tools, ux §8), superpdf:// routing, Dock menu, open/drop handling
   SuperPDFQuickActions/  Finder extension target (Combine, Make smaller, Convert to PDF, Recognise text)
   SuperPDFSelfTest/  headless checks (`swift run SuperPDFSelfTest`), per module, plus engine smoke tests and benches
@@ -105,7 +96,7 @@ Sources/
   and `LayoutKit`/`RenderKit`/`PDFModelKit` which are engines without app policy). They never import each other; they
   talk through the `Services` registry.
 - Each protocol has one owning module. Its `<Module>Module.install()` registers the implementation in `Services`.
-  The app target owns `Services.models` and `Services.updates`.
+  The app target owns `Services.updates`.
 - **Tools are data + a service.** The catalog in Core lists every tile (ux §4.1). A module implements
   `ToolProviding` for its tool ids: `func panel(for id: ToolID, context: ToolContext) -> ToolPanel` (the archetype and
   its controls) and `func run(_ request: ToolRequest, progress: ToolProgress) async throws -> ToolResult`. ToolsKit
@@ -115,7 +106,7 @@ Sources/
   No module writes to the open file's URL directly.
 - `SuperPDFCore` is the contract. A change to it updates every implementation and fake in the same change.
   Module-private settings use the module as key prefix: `Key<Bool>("toolsKit.recentRow", …)`.
-- UI code and service protocols are `@MainActor`. Engines (QPDF, llama.cpp, Vision, rendering, SQLite, conversions)
+- UI code and service protocols are `@MainActor`. Engines (QPDF, Vision, rendering, SQLite, conversions)
   work off the main actor and hand back values; they never touch `Services` from a background thread. PDFKit objects
   are touched only on the main actor; long jobs work on a private `PDFModelKit` handle of the same bytes.
 - Local-first: no network except features §3.5 (`PRIVACY.md` repeats the list). No telemetry, no remote flags.
@@ -141,21 +132,62 @@ Sources/
 | `Protecting`, `Redacting`, `Sanitizing`, `Flattening` | ProtectKit: `protect: Protecting` | features §1.8, #69–70 |
 | `Optimizing`, `OCRing`, `Checking` (PDF/A, print, accessibility), `Repairing` | FixKit: `fix: Fixing` | features §1.9 |
 | `Scanning` (sources, sessions) | ScanKit: `scan: Scanning` | features §1.10 |
-| `LLMEngine`, `Embedding`, `ModelStore`, `ModelCatalog`, `AutoDownloadPolicy` | engines; IntelligenceKit: `ai: Intelligence`, `chat: Chatting`; app: `models: ModelManaging` | features §3.4 |
 | `BatchPipeline`, `Routine` | BatchKit: `batch: BatchRunning` | features #75 |
 | `Defaults` keys, `SPColor/SPFont/SPMetrics/SPMotion`, `Strings` | Core | ux §2, §6.6, §7 |
 | `UpdateChecking` | app: `updates` (UpdateKit) | — |
 
+### Contract notes (WP1)
+
+What `SuperPDFCore` actually declares, where it differs from or adds to the table above:
+
+- **Names.** `Renderer` is the `Rendering` protocol; the converter registry is data (`ConverterTable`: lower-case
+  extensions → ranked `ConverterEngine`s, `toPDF` / `fromPDF` / `fallback`) plus ConvertKit's runtime `Converting`
+  (`converters(for: UTType, to:)` answers `ConverterOffer`s with `ConverterAvailability`); `PageOperations` is the
+  `PageOperation` enum run through `PageEditing.perform(_:in:)`; `Decorations` is the `Decoration` enum run through
+  `ContentEditing.apply(_:to:in:replacing:)` (PagesKit's Number pages uses `.pageNumbers` there). `Annotating`,
+  `FormServicing`, `Signing`, `Protecting` and `Fixing` compose the listed sub-protocols. `Fixing` also owns
+  `compare(_:with:textOnly:progress:)` for Compare files.
+- **Extra slots.** `Services.viewer` (`ViewerPresenting`: window controller per document, PDFView, selection, tool
+  panel slot, banner, sidebar, organiser, welcome), `Services.settings` (`SettingsPresenting`), and
+  `Services.toolProviders`: every tool module appends its `ToolProviding` in `install()`; ToolsKit reads the list when
+  it installs (after them) and registers `Services.tools`.
+- **Tool host.** `ToolProviding` (`tools`, `availability`, `panel(for:context:)`, `preview(for:context:)`,
+  `handle(action:context:)`, `run(_:progress:)`), with defaults for availability, preview and actions. Panels are
+  declarative: `ToolPanel` = archetype + up to three `ToolControl`s + More options + primary/secondary `ToolButton` +
+  `OutputPolicy` + optional `ToolMessage` / `ToolConfirmation` / G-steps; every control id keys a `ToolValue` in
+  `ToolValues` (Codable, so routines store them). `ToolControl.custom` hosts a provider's own view (mode palettes, flow
+  steps). Live previews are `ToolPreview.overlay` (drawn per page in page space) or `.summary` lines. Failures throw
+  `ToolError` (panel copy + one action). Archetype F is gone with the AI tools; the letters stay as ux §5.2 names them.
+- **Results and output.** A run writes into `request.workFolder`; `ToolResult` is `.inPlace(undoable:banner:)`,
+  `.newFile`, `.newFiles`, `.newDocument(Data, name:)` or `.none`; `DocumentManaging.apply(_:of:)` moves files to
+  `request.destination` (resolved before the run by `destination(for:of:source:)`, ux §7.2 naming with " 2" on
+  collisions) and registers undo. `UndoGroup` is `.actions(undo:redo:)` (registered with
+  `UndoManager.register(_:)`) or `.contents(before:after:)` (bytes DocumentKit swaps). `OutputSuffix` follows ux §7.2;
+  parts and page extracts use ux §5.3/§3's en-dash form ("Report – part 1.pdf"). `DocumentHandle.undoManager` is weak
+  (NSDocument owns it).
+- **Engines see bytes, not PDFKit.** `DocumentHandle.snapshot()` gives a `PDFSource` (file + password when unedited,
+  else PDFKit's data); every engine-facing method takes `PDFSource`.
+- **Catalog.** 52 tiles (ux §4.1's rows; its old "54" was a miscount before the AI tiles went). Each tile has an
+  `owner` module and `needsDocument`. Owners where no work package named the feature: Contents and Read aloud →
+  ViewerKit, Compare files → FixKit. The Understand section now holds only Read aloud. SF Symbols: those ux §2.4 names,
+  the rest chosen in WP1 (self-test checks they exist).
+- **Menus.** `MenuTree.main` is ux §8 as data; the app builds NSMenus from it. Items without a standard AppKit action
+  send `performMenuCommand(_:)` (`MenuCommandResponding`) up the responder chain with the `MenuCommand` as identifier;
+  `MenuCommand.tool(_:)` opens a tile. Attachments has no shortcut: ux §2.1 gives it ⌥⌘6, but §6.2 and §8 give ⌥⌘6 to
+  Page Organiser, which wins. ⌥⌘A (was Chat) is free.
+- **Self-test rules.** Scratch Application Support and defaults suite; no case opens, launches or activates another
+  app or URL (inject fake openers); `makeDocument(pages:)` / `makePDF(pages:)` build fixtures; `SUPERPDF_SELFTEST_ONLY`
+  filters cases. Run `scripts/build-qpdf.sh fetch` once per checkout before `swift build`.
+
 ## Launch sequence
 
 1. `SuperPDFCore` bootstrap: paths, Defaults migration, logging.
-2. `<Module>Module.install()` in dependency order: DocumentKit, Layout/Render/PDFModel engines, PagesKit, ConvertKit,
-   EditKit, MarkupKit, FormsKit, SignKit, ProtectKit, FixKit, ScanKit, IntelligenceKit, BatchKit, ToolsKit (collects
-   providers and verifies every catalog tile has exactly one provider — a self-test too), ViewerKit, SettingsKit.
-3. App target: `Services.models` (ModelKit with the catalog), `Services.updates`; main menu; PDF Services item
+2. `<Module>Module.install()` in dependency order: DocumentKit, LayoutKit, RenderKit, PagesKit, ConvertKit, EditKit,
+   MarkupKit, FormsKit, SignKit, ProtectKit, FixKit, ScanKit, BatchKit, ToolsKit (collects providers and verifies every
+   catalog tile has exactly one provider — a self-test too), ViewerKit, SettingsKit.
+3. App target: `Services.updates`; main menu; PDF Services item
    offer (once); Quick Actions registration.
-4. Open the files passed in, else the welcome window. Then `Services.models.startAutomaticDownloads()` (Qwen3.5-2B
-   first, embeddings second; guarded by `AutoDownloadPolicy`), `Services.updates.start()`.
+4. Open the files passed in, else the welcome window. Then `Services.updates.start()`.
 
 ## End-to-end tool flow
 
@@ -166,21 +198,19 @@ applies the output policy → ViewerKit shows the result banner → undo stack /
 
 ## Data
 
-- `~/Library/Application Support/Super PDF/Models/<kind>/<file>` (+ `.partial`), `Helpers/LibreOffice.app`,
-  `Requests/<id>/` (signing packages, returns, audit), `Signatures/` (Keychain-referenced images),
-  `Index/<folder-hash>.sqlite` (folder search), `Chats.sqlite` (per-document chat threads + page embeddings as BLOBs,
-  FTS5 trigram), `Routines/*.json`, `Stamps/`.
+- `~/Library/Application Support/Super PDF/Helpers/LibreOffice.app` (+ `lo-profile`), `Requests/<id>/` (signing
+  packages, returns, audit), `Signatures/` (Keychain-referenced images), `Index/<folder-hash>.sqlite` (folder search,
+  FTS5), `Routines/*.json`, `Stamps/`.
 - Per-document view state in the document's extended attributes (`com.udsy.superpdf.viewstate`), never inside the PDF.
 - Keychain: signing private keys (`SecKeyCreateRandomKey`, access control optional), signature images key.
 
 ## Native dependencies
 
 System frameworks: AppKit, SwiftUI (panels and settings), PDFKit, Quartz/ImageKit, CoreGraphics, CoreImage, Vision,
-VisionKit, ImageCaptureCore, WebKit, Translation (weak-linked, macOS 15), FoundationModels (weak-linked, macOS 26),
-AVFoundation (speech), Contacts, Security, CryptoKit, Compression, SQLite3, UniformTypeIdentifiers, AppIntents.
-Packages: llama.cpp b11721 xcframework (binaryTarget, checksum from Super Flow), QPDF xcframework (binaryTarget built
-by `scripts/build-qpdf.sh`, published on this repo's Releases), `swift-certificates` + `swift-asn1` (Apple,
-Apache-2.0). No other third-party code. Licences in `THIRD_PARTY_NOTICES.md`.
+VisionKit, ImageCaptureCore, WebKit, AVFoundation (speech), Contacts, Security, CryptoKit, Compression, SQLite3,
+UniformTypeIdentifiers, AppIntents. Packages: QPDF xcframework (binaryTarget built by `scripts/build-qpdf.sh`, published
+on this repo's Releases, fetched into `Vendor/` by `scripts/build-qpdf.sh fetch`), `swift-certificates` 1.21.0 +
+`swift-asn1` 1.7.3 (Apple, Apache-2.0, pinned exactly). No other third-party code. Licences in `THIRD_PARTY_NOTICES.md`.
 
 ## Work packages
 
@@ -197,16 +227,11 @@ in Core with every caller updated in the same change). Every tool a package ship
 | A | WP0a, WP0b, WP0c, WP1 | now |
 | B | WP2, WP3, WP4, WP5 | WP1 merged (placeholders for every module and engine exist) |
 | C | WP6, WP7, WP8, WP9, WP10, WP11, WP12, WP13, WP14 | WP1 + WP2 (LayoutKit/RenderKit) + WP0c (PDFModelKit) merged; each works against the ToolsKit placeholder API announced by WP5 |
-| D | WP15 | WP0a merged (LLMKit/ModelKit) + WP2 |
-| E | WP16 | every B/C/D package merged |
+| E | WP16 | every B/C package merged (wave D held WP15, removed with the AI tools) |
 
-**WP0a — LLMKit, ModelKit, UpdateKit from Super Flow** (heavy). `Sources/{LLMKit,ModelKit,UpdateKit}/**` and their
-`<Engine>Tests.swift`. Copy and adapt with provenance comments; configuration through initialisers; the shared value
-types from `SuperPDFCore/Contracts/Engines.swift` (extend there in the same change). LLMKit: Qwen3.5 chat template
-with thinking off, prefix snapshot (recurrent-state save/restore, local-models §3.2 caveat), JSON-schema grammar,
-embeddings. ModelKit: the guarded automatic queue exactly as Super Flow's `AutoDownloadPolicy`/`AutoDownloadGate`,
-catalog entries for Qwen3.5-2B/4B and Qwen3-Embedding-0.6B with the SHA-256 values from local-models §5.2 pinned to
-commit revisions. Super Flow is not changed.
+**WP0a — UpdateKit from Super Flow** (heavy). `Sources/UpdateKit/**` and `UpdateKitTests.swift`. Copy and adapt with
+provenance comments; configuration through initialisers; the shared value types from
+`SuperPDFCore/Contracts/Engines.swift` (extend there in the same change). Super Flow is not changed.
 
 **WP0b — QPDF xcframework build** (careful). `scripts/build-qpdf.sh`, `.github/workflows/qpdf.yml`,
 `THIRD_PARTY_NOTICES.md` (QPDF, libjpeg-turbo, zlib). CMake static build of QPDF 12 + libjpeg-turbo for arm64 and
@@ -225,9 +250,8 @@ re-opening with PDFKit.
 `<Module>Module.swift` for every module, placeholder files for every engine, the app target skeleton,
 `Sources/SuperPDFSelfTest/{main,CoreTests,Fakes}.swift`, per-module test stubs. Everything in "Core contracts":
 domain model, service protocols with fakes, `Services`, `SuperPDFPaths`, `Defaults` (ux §6.6), **the tool catalog
-as data (ux §4.1, all 54 tiles with hints and synonyms)**, converter registry table (features §3.2), design tokens
-(ux §2.1–2.5), strings (ux §4.1 hints, §7 banners/errors/empty states), model catalog + presets (features §3.4), menu
-tree + shortcuts (ux §8). Acceptance: `swift build` clean; Core self-tests (Defaults round-trip, token values, catalog
+as data (ux §4.1, all 52 tiles with hints and synonyms)**, converter registry table (features §3.2), design tokens
+(ux §2.1–2.5), strings (ux §4.1 hints, §7 banners/errors/empty states), menu tree + shortcuts (ux §8). Acceptance: `swift build` clean; Core self-tests (Defaults round-trip, token values, catalog
 integrity: unique ids, every tile has a section/icon/hint/features #, synonyms lower-cased) pass.
 
 **WP2 — LayoutKit + RenderKit** (fable). `Sources/{LayoutKit,RenderKit}/**`. Layout analysis (features §2.4) from
@@ -251,7 +275,7 @@ offscreen renders against the mockups' metrics.
 
 **WP5 — ToolsKit** (heavy). `Sources/ToolsKit/**`. The Tools sheet (ux §4: search with synonyms, recently used by
 frecency, sections, badges for unavailable engines, keyboard, right-click Add to Toolbar), the panel host with
-archetypes A–G (ux §5.1–5.2), scope control, live-preview overlay plumbing, progress and error presentation, Tools
+archetypes A–E and G (ux §5.1–5.2), scope control, live-preview overlay plumbing, progress and error presentation, Tools
 menu + toolbar items generated from the catalog, Dock menu. Announces the `ToolProviding` host API for wave C.
 Tests: search ranking fixtures ("ocr" → Recognise text, "merge" → Combine files), frecency, archetype rendering
 snapshots, provider-coverage check (every catalog tile has one provider).
@@ -311,20 +335,12 @@ threshold on fixtures; OCR layer searchable in PDFKit; checker results on known 
 photo document detection + perspective correction (#103), clean-up pipeline (#104), the three-step panel (ux §5.3).
 Tests: detection + correction on photo fixtures; pipeline idempotence; device-list state mapping with a fake browser.
 
-**WP15 — IntelligenceKit** (fable). `Sources/IntelligenceKit/**`. Registers `ai`, `chat`. Summarise map-reduce (#105),
-chat with FTS5 + embeddings RRF and page citations (#106), assistant tool-calling over the catalog with JSON grammar and
-confirm-before-write (#107), translate via Translation framework (macOS 15+) with LLM fallback and layout re-set
-through EditKit (#108), questions/flashcards with grammar (#109), explain/rewrite (#110), alt text (#111), name/
-properties (#112), audio summary + summary slide (#118), Apple Foundation Models option on macOS 26, model-readiness
-states and copy (ux §5.3, §7.4). Prompts in our own words with golden fixtures. Tests: retrieval recall@5 on a fixture
-corpus, grammar outputs parse, tool-call loop with a scripted model, citation page accuracy.
-
 **WP16 — App target, packaging, end to end** (careful). `Sources/SuperPDF/**`, `Sources/SuperPDFQuickActions/**`,
 `Sources/BatchKit/**`, `Sources/SettingsKit/**`, `scripts/**`, `Resources/**`, `.github/**`, `README.md`,
 `PRIVACY.md`, `CHANGELOG.md`, `THIRD_PARTY_NOTICES.md`. Launch sequence, module install order, main menu, Dock menu,
 URL routes, Info.plist (document types for every input format, usage strings for camera/contacts/automation/
 microphone), Quick Actions, App Intents, PDF Services item, Settings panes (ux §6.6), batch runner (#75),
-`build-app.sh` (frameworks: llama, QPDF; executables; static launch checks), DMG, `release.sh` + updater wiring, CI,
+`build-app.sh` (QPDF linked statically; executables; static launch checks), DMG, `release.sh` + updater wiring, CI,
 end-to-end self-test (scan fixture → OCR → make smaller → PDF/A → verify; combine → sign → verify; request package →
 return → seal).
 
@@ -334,5 +350,4 @@ return → seal).
    ProtectKit always routes through PDFModelKit (WP12 measures and decides).
 2. Whether `PDFDocumentBurnInAnnotationsOption` preserves form-field appearance streams for all widget types; if not,
    FixKit's own flattener via PDFModelKit takes over (WP12).
-3. Qwen3.5-2B vs 4B default on 16 GB Macs for chat quality: WP15 runs the fixture A/B and sets the preset.
 4. QPDF static build size and build time in CI (WP0b reports; fallback is a pre-built release artifact only).
