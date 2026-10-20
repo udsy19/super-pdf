@@ -261,11 +261,15 @@ public final class ToolSession: ObservableObject {
         }
     }
 
-    /// "Saves “Report (smaller).pdf” next to the original"; nil for in-place edits and new unsaved documents.
-    public var outputLine: (text: String, fileName: String)? {
+    /// "Saves “Report (smaller).pdf” next to the original" (with Change…), or for Black out and Sign
+    /// "Saves “Lease agreement (signed).pdf” · the original is untouched"; nil for in-place edits and new unsaved documents.
+    public var outputLine: (text: String, fileName: String, offersChange: Bool)? {
         guard let destination else { return nil }
         let name = destination.lastPathComponent
-        return (Strings.Panel.savesNextToOriginal(name), name)
+        if case .sibling(let suffix, _) = panel.output, suffix.keepsOriginalUntouched {
+            return (Strings.Panel.savesOriginalUntouched(name), name, false)
+        }
+        return (Strings.Panel.savesNextToOriginal(name), name, true)
     }
 
     /// Change…: asks for another place.

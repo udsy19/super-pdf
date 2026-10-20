@@ -116,7 +116,7 @@ struct ToolPanelView: View {
 
     private var footer: some View {
         VStack(spacing: Style.Panel.footerGap) {
-            if let line = session.outputLine { OutputLine(text: line.text, fileName: line.fileName) }
+            if let line = session.outputLine { OutputLine(text: line.text, fileName: line.fileName, offersChange: line.offersChange) }
             HStack(alignment: .top, spacing: 8) {
                 if session.canGoBack {
                     Button { session.back() } label: {
@@ -241,10 +241,12 @@ private struct DisclosureRow: View {
     }
 }
 
-/// "Saves “Report (smaller).pdf” next to the original · Change…"
+/// "Saves “Report (smaller).pdf” next to the original · Change…", or Black out's and Sign's
+/// "Saves “Lease agreement (signed).pdf” · the original is untouched".
 private struct OutputLine: View {
     var text: String
     var fileName: String
+    var offersChange: Bool
     var body: some View {
         var line = AttributedString(text)
         line.font = .sp(SPFont.secondary)
@@ -260,7 +262,7 @@ private struct OutputLine: View {
         var dot = AttributedString(" · ")
         dot.font = .sp(SPFont.secondary)
         dot.foregroundColor = Color(Style.secondary)
-        return Text(line + dot + change).multilineTextAlignment(.center).lineSpacing(2.2).tint(Color(Style.accent))
+        return Text(offersChange ? line + dot + change : line).multilineTextAlignment(.center).lineSpacing(2.2).tint(Color(Style.accent))
             .fixedSize(horizontal: false, vertical: true)
     }
 }
@@ -322,14 +324,18 @@ private struct MessageView: View {
     }
 }
 
-/// The "Pages" scope row (ux §5.1): All · This page · Selected (n) · some pages typed as "3–5".
+/// The "Pages" scope row (ux §5.1): All 12 pages · This page · Selected pages · some pages typed as "3–5".
 private struct ScopeRow: View {
     @ObservedObject var session: ToolSession
     @State private var rangeText = ""
 
     private var options: [ToolOption] {
-        var options = [ToolOption("all", Strings.Panel.scope(.all)), ToolOption("current", Strings.Panel.scope(.current))]
-        if session.selection.count > 1 { options.append(ToolOption("selected", Strings.Panel.scope(.selected(session.selection)))) }
+        let count = session.document?.pageCount ?? 0
+        var options = [ToolOption("all", Strings.Panel.scope(.all, pageCount: count)),
+                       ToolOption("current", Strings.Panel.scope(.current, pageCount: count))]
+        if session.selection.count > 1 {
+            options.append(ToolOption("selected", Strings.Panel.scope(.selected(session.selection), pageCount: count)))
+        }
         options.append(ToolOption("ranges", ToolsKitStrings.rangeItem))
         return options
     }
@@ -410,8 +416,12 @@ struct ControlView: View {
                     Spacer(minLength: 0)
                 }
             }
-        case .toggle(let id, let label, _):
-            CheckRow(label: label, isOn: session.values.bool(id)) { session.set(id, .bool($0)) }
+        case .toggle(let id, let label, _, let rowLabel):
+            if let rowLabel {
+                ControlRow(label: rowLabel) { CheckRow(label: label, isOn: session.values.bool(id)) { session.set(id, .bool($0)) } }
+            } else {
+                CheckRow(label: label, isOn: session.values.bool(id)) { session.set(id, .bool($0)) }
+            }
         case .text(let id, let label, let placeholder, _, let isSecure):
             ControlRow(label: label) {
                 PanelTextField(placeholder: placeholder, value: session.values.string(id), isSecure: isSecure, focusOnAppear: focusOnAppear) {

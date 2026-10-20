@@ -123,9 +123,9 @@ public enum SPMetrics {
         public static let radius: CGFloat = 12
         public static let border: CGFloat = 1
         /// The icon circle in the category colour at 15 % with the symbol in the category colour.
-        public static let iconCircle: CGFloat = 40
+        public static let iconCircle: CGFloat = 36
         public static let iconCircleOpacity: CGFloat = 0.15
-        public static let symbolSize: CGFloat = 20
+        public static let symbolSize: CGFloat = 18
         public static let hintLines = 2
         public static let hoverLift: CGFloat = 1
     }

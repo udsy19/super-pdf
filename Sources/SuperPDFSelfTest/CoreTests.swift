@@ -145,7 +145,7 @@ private func coreTokenValues() {
     check(SPMetrics.PrimaryButton.height == 36 && SPMetrics.PrimaryButton.radius == 10 && SPMetrics.PrimaryButton.disabledOpacity == 0.4,
           "primary button 36 tall, radius 10, 40% disabled")
     check(SPMetrics.ToolsSheet.size == NSSize(width: 880, height: 620) && SPMetrics.ToolsSheet.columns == 5
-          && SPMetrics.Tile.size == NSSize(width: 150, height: 116) && SPMetrics.Tile.iconCircle == 40, "sheet 880 × 620, 5 × 150 × 116 tiles")
+          && SPMetrics.Tile.size == NSSize(width: 150, height: 116) && SPMetrics.Tile.iconCircle == 36 && SPMetrics.Tile.symbolSize == 18, "sheet 880 × 620, 5 × 150 × 116 tiles")
     check(SPMetrics.Banner.height == 44 && SPMetrics.Banner.autoHideDelay == 8 && SPMetrics.MarkupBar.height == 31, "banner 44 / 8 s, markup bar 31")
     check(SPMetrics.Organiser.defaultThumbnailWidth == 160 && SPMetrics.Organiser.thumbnailWidthRange == 80...320
           && SPMetrics.Organiser.insertionLine == 3, "organiser 160 (80–320), 3 pt insertion line")
@@ -274,8 +274,11 @@ private func coreStrings() {
     check(Strings.Errors.redactConfirm(items: 12) == "This permanently removes 12 items from the new file. Your original stays as it is.",
           "redact confirm copy")
     check(Strings.Save.title("Report.pdf") == "Save changes to “Report.pdf”?" && Strings.Save.saveCopy == "Save a copy…", "save sheet copy")
-    check(Strings.Panel.scope(.all) == "All" && Strings.Panel.scope(.current) == "This page" && Strings.Panel.scope(.selected([1, 2, 3, 4]))
-          == "Selected (4)" && Strings.Panel.scope(.ranges(PageRanges([2...4]))) == "3–5", "scope popup titles")
+    check(Strings.Panel.scope(.all, pageCount: 12) == "All 12 pages" && Strings.Panel.scope(.current, pageCount: 12) == "This page"
+          && Strings.Panel.scope(.selected([1, 2, 3, 4]), pageCount: 12) == "Selected pages"
+          && Strings.Panel.scope(.ranges(PageRanges([2...4])), pageCount: 12) == "3–5", "scope popup titles")
+    check(Strings.Panel.savesOriginalUntouched("Lease agreement (signed).pdf")
+          == "Saves “Lease agreement (signed).pdf” · the original is untouched", "untouched output line")
     check(Strings.Panel.engineLine(.app(.pages)) == "Pages will open to export this file"
           && Strings.Panel.engineLine(.libreOffice) == "Converted by: LibreOffice", "engine lines (ux §5.3)")
     check(ToolAvailability.needsDevice.badge == "Needs iPhone nearby" && ToolAvailability.needsConverter.badge == "Install converter"

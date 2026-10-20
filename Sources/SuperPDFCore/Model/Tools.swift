@@ -254,7 +254,8 @@ public enum ToolControl {
     case slider(id: String, label: String, range: ClosedRange<Double>, step: Double, value: Double, format: ToolValueFormat)
     case stepper(id: String, label: String, range: ClosedRange<Int>, value: Int)
     /// The label says what it does ("Also remove hidden information").
-    case toggle(id: String, label: String, isOn: Bool)
+    /// With a `rowLabel` the box sits in a labelled row ("Date  [x] Add today’s date next to it").
+    case toggle(id: String, label: String, isOn: Bool, rowLabel: String? = nil)
     case text(id: String, label: String?, placeholder: String, value: String, isSecure: Bool)
     /// A drop zone with a list (Combine queue, Compare's "Compare with", Images → PDF); `types` are UTType identifiers.
     case files(id: String, label: String, types: [String], allowsMultiple: Bool)
@@ -284,7 +285,7 @@ public enum ToolControl {
     public var id: String? {
         switch self {
         case .segmented(let id, _, _, _), .radio(let id, _, _), .popup(let id, _, _, _), .slider(let id, _, _, _, _, _),
-             .stepper(let id, _, _, _), .toggle(let id, _, _), .text(let id, _, _, _, _), .files(let id, _, _, _),
+             .stepper(let id, _, _, _), .toggle(let id, _, _, _), .text(let id, _, _, _, _), .files(let id, _, _, _),
              .positionGrid(let id, _, _, _), .action(let id, _, _, _), .checklist(let id, _, _), .chips(let id, _, _, _),
              .custom(let id, _):
             id
@@ -299,7 +300,7 @@ public enum ToolControl {
         case .segmented(_, _, _, let selected), .radio(_, _, let selected), .popup(_, _, _, let selected): .string(selected)
         case .slider(_, _, _, _, let value, _): .double(value)
         case .stepper(_, _, _, let value): .int(value)
-        case .toggle(_, _, let isOn): .bool(isOn)
+        case .toggle(_, _, let isOn, _): .bool(isOn)
         case .text(_, _, _, let value, _): .string(value)
         case .files: .files([])
         case .positionGrid(_, _, _, let selected): .int(selected)
@@ -578,6 +579,9 @@ public enum OutputPolicy: Codable, Hashable, Sendable {
 /// The suffixes of ux §7.2 (and §7.1's "edited"), in the words people see.
 public enum OutputSuffix: Codable, Hashable, Sendable {
     case edited, smaller, blackedOut, protected, noPassword, lockedIn, signed, archive, clean, repaired
+
+    /// Black out and Sign change what the page shows, so their line reassures: "· the original is untouched".
+    public var keepsOriginalUntouched: Bool { self == .blackedOut || self == .signed }
     /// "part 1"
     case part(Int)
     /// "pages 3-5"

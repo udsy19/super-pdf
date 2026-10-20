@@ -69,20 +69,23 @@ public enum Strings {
         public static let showDetails = "Show details"
         public static let back = "Back"
         public static let next = "Next"
-        /// The scope popup: "Pages: All · This page · 3–5 · Selected (4)".
+        /// The scope popup: "Pages: All 12 pages · This page · 3–5 · Selected pages".
         public static let scopeLabel = "Pages"
-        public static func scope(_ scope: Scope) -> String {
+        public static func scope(_ scope: Scope, pageCount: Int) -> String {
             switch scope {
-            case .all: "All"
+            case .all: pageCount == 1 ? "All 1 page" : "All \(pageCount) pages"
             case .current: "This page"
             case .ranges(let ranges): ranges.display
-            case .selected(let pages): "Selected (\(pages.count))"
+            case .selected: "Selected pages"
             }
         }
         /// "Page 14 of 120" while a run works through pages.
         public static func progress(page: Int, of total: Int) -> String { "Page \(page) of \(total)" }
         /// The output line above the button: "Saves “Report (smaller).pdf” next to the original".
         public static func savesNextToOriginal(_ fileName: String) -> String { "Saves \(quoted(fileName)) next to the original" }
+        /// The output line of tools that change what the page shows, in a copy (Black out, Sign):
+        /// "Saves “Lease agreement (signed).pdf” · the original is untouched".
+        public static func savesOriginalUntouched(_ fileName: String) -> String { "Saves \(quoted(fileName)) · the original is untouched" }
         /// The convert archetype's engine line (ux §5.3 Images → PDF / Any file → PDF).
         public static func engineLine(_ engine: ConverterEngine) -> String {
             switch engine {

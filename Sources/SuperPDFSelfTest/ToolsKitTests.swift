@@ -273,6 +273,7 @@ private func toolsSession() {
     check(session.values.string("preset") == "good" && session.values.double("quality") == 70, "values start from the panel")
     check(session.panel.hint?.hasPrefix("Shrinks") == true, "the panel's own hint")
     check(session.outputLine?.text == "Saves “Report (smaller).pdf” next to the original", "output line: \(session.outputLine?.text ?? "nil")")
+    check(session.outputLine?.offersChange == true, "a plain copy offers Change…")
 
     // A choice changes the panel at once.
     session.set("preset", .string("email"))
@@ -566,7 +567,7 @@ private final class MockupProvider: ToolProviding {
                 .custom(id: "pads", make: { SignaturePadsStandIn() }),
                 .action(id: "create", title: "Create signature…", isDestructive: false, symbol: "plus"),
                 .note("You can draw on the trackpad, hold a signed piece of paper up to the camera, or sign on your iPhone."),
-                .toggle(id: "date", label: "Add today’s date next to it", isOn: true),
+                .toggle(id: "date", label: "Add today’s date next to it", isOn: true, rowLabel: "Date"),
             ], primary: ToolButton("Sign and save…"), output: .sibling(.signed, ext: "pdf"))
         default:
             return ToolPanel(.flow, hint: "Send this to people to sign. They can sign in any PDF app and send it back; we match the files "
