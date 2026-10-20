@@ -11,3 +11,4 @@ Models/
 *.mlmodelc/
 node_modules/
 docs/mockups/chrome-cdp/
+/Vendor/

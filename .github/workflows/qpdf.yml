@@ -1,0 +1,43 @@
+# Builds and smoke-tests the QPDF xcframework (scripts/build-qpdf.sh). Run it by hand with "publish" to upload the
+# zip to the release named by `qpdfRelease` in Package.swift; then pin the printed SHA-256 as `qpdfChecksum`.
+name: QPDF xcframework
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Upload dist/QPDF.xcframework.zip to the pinned release
+        type: boolean
+        default: false
+  pull_request:
+    paths: [scripts/build-qpdf.sh, scripts/qpdf-smoke.swift, .github/workflows/qpdf.yml]
+  push:
+    branches: [main]
+    paths: [scripts/build-qpdf.sh, scripts/qpdf-smoke.swift, .github/workflows/qpdf.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tools
+        run: |
+          command -v cmake || brew install cmake
+          /usr/bin/pgrep -q oahd || softwareupdate --install-rosetta --agree-to-license
+      - name: Build
+        run: scripts/build-qpdf.sh build
+      - name: Smoke test (arm64 + x86_64)
+        run: scripts/build-qpdf.sh verify
+      - uses: actions/upload-artifact@v4
+        with:
+          name: QPDF.xcframework
+          path: dist/QPDF.xcframework.zip
+      - name: Publish
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/build-qpdf.sh release
