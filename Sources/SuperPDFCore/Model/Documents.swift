@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import PDFKit
 
@@ -21,6 +22,19 @@ public enum PDFSource: Hashable, Sendable {
         switch self {
         case .file(let url, _): try Data(contentsOf: url, options: .mappedIfSafe)
         case .data(let data, _): data
+        }
+    }
+
+    /// A string that changes whenever the bytes do: the engines' caches (page images, layout) key on it. A file is its
+    /// path, size and modification date; data is its SHA-256. Hashing data is the only cost, so call it off the main
+    /// actor for large documents.
+    public func fingerprint() -> String {
+        switch self {
+        case .file(let url, _):
+            let values = try? url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+            return "file:\(url.path):\(values?.fileSize ?? -1):\(values?.contentModificationDate?.timeIntervalSince1970 ?? 0)"
+        case .data(let data, _):
+            return "data:" + SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
         }
     }
 }
