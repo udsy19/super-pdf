@@ -240,9 +240,9 @@ public enum ToolValueFormat: String, Sendable {
 /// One control of a panel, in the order shown (ux §5.1). Each `id` keys its value in `ToolValues`; the value given
 /// here is the default ToolsKit starts from (ToolsKit remembers choices per tool, never text or files).
 ///
-/// At most three *choices* are visible (ux §5.1): radio, popup, slider, stepper, toggle, text, position grid and
-/// checklist count; segmented switches, chips, notes, lists, actions, drop zones and custom views do not. ToolsKit moves
-/// any further choices to the top of More options.
+/// At most three *choices* are visible (ux §5.1): radio, popup, slider, stepper, toggle, text and position grid count;
+/// segmented switches, chips, checklists of found things, notes, lists, actions, drop zones and custom views do not.
+/// ToolsKit moves any further choices to the top of More options.
 public enum ToolControl {
     /// With a `label` it is a labelled row ("Format  [Word (.docx) | Rich text (.rtf)]"); without, full width. A mode
     /// panel's (archetype D) first unlabelled one is drawn in the header, under the hint ("Mark by hand · Find and mark").
@@ -311,8 +311,8 @@ public enum ToolControl {
     /// Counts toward the three visible choices (ux §5.1).
     public var isChoice: Bool {
         switch self {
-        case .radio, .popup, .slider, .stepper, .toggle, .text, .positionGrid, .checklist: true
-        case .segmented, .files, .action, .chips, .list, .note, .custom, .scope, .moreOptions: false
+        case .radio, .popup, .slider, .stepper, .toggle, .text, .positionGrid: true
+        case .segmented, .files, .action, .checklist, .chips, .list, .note, .custom, .scope, .moreOptions: false
         }
     }
 }

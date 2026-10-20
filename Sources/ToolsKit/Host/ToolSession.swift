@@ -29,7 +29,7 @@ public final class ToolSession: ObservableObject {
     @Published public private(set) var scope: Scope
     @Published public private(set) var selection: [Int]
     @Published public private(set) var currentPage: Int
-    @Published public private(set) var inputs: [URL]
+    public let inputs: [URL]
     @Published public private(set) var preview: ToolPreview = .none
     /// A failure from an action or a run; cleared by the next change.
     @Published public private(set) var failure: ToolMessage?
@@ -102,12 +102,6 @@ public final class ToolSession: ObservableObject {
     public func setScope(_ scope: Scope) {
         guard self.scope != scope else { return }
         self.scope = scope
-        changed()
-    }
-
-    public func setInputs(_ urls: [URL]) {
-        guard inputs != urls else { return }
-        inputs = urls
         changed()
     }
 

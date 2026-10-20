@@ -1,11 +1,15 @@
+import Foundation
 import SuperPDFCore
 
-/// ToolsKit: the Tools sheet, the panel host and archetypes A–G, scope, live preview, progress, favourites, frecency
-/// and search (docs/ARCHITECTURE.md, WP5). It registers `Services.tools` (`ToolRegistry`), after collecting
-/// `Services.toolProviders` and checking that every catalog tile has exactly one provider.
-///
-/// Placeholder: `install()` registers nothing until WP5 replaces this file, keeping `install()` registering exactly
-/// these services.
+/// ToolsKit: the Tools sheet, the panel host and archetypes A–E and G, scope, live preview, progress, favourites,
+/// frecency and search (docs/ARCHITECTURE.md, WP5). It registers `Services.tools` (`ToolRegistry`); providers are read
+/// from `Services.toolProviders` when first needed, and once every module has installed the coverage (exactly one
+/// provider per catalog tile) is checked and any gap logged.
 public enum ToolsKitModule {
-    @MainActor public static func install() {}
+    @MainActor public static func install() {
+        let controller = ToolsController()
+        Services.tools = controller
+        // ViewerKit and SettingsKit install after ToolsKit; check when the launch sequence is done.
+        DispatchQueue.main.async { controller.reportCoverage() }
+    }
 }
