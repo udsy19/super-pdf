@@ -220,8 +220,16 @@ final class ToolsController: NSObject, ToolRegistry {
     }
 
     /// Thumbnails picked while the panel is open switch the scope (ux §5.1); checked after each event in that window.
+    /// A mode tool's page interaction reaches its panel through `ToolPanel.performActionNotification`.
     private func watchSelection(of document: DocumentHandle, session: ToolSession) -> [Any] {
-        guard let window = Services.viewer?.pdfView(for: document)?.window else { return [] }
+        let action = NotificationCenter.default.addObserver(forName: ToolPanel.performActionNotification, object: document, queue: .main) {
+            [weak session] note in
+            MainActor.assumeIsolated {
+                guard let session, let id = note.userInfo?[ToolPanel.actionKey] as? String else { return }
+                Task { await session.perform(id) }
+            }
+        }
+        guard let window = Services.viewer?.pdfView(for: document)?.window else { return [action] }
         let observer = NotificationCenter.default.addObserver(forName: NSWindow.didUpdateNotification, object: window, queue: .main) {
             [weak session] _ in
             MainActor.assumeIsolated {
@@ -229,7 +237,7 @@ final class ToolsController: NSObject, ToolRegistry {
                 session.updateSelection(viewer.selectedPages(in: document), currentPage: viewer.currentPage(in: document))
             }
         }
-        return [observer]
+        return [action, observer]
     }
 
     /// `.overlay` previews are drawn over the document's pages; the overlay is installed the first time one arrives.

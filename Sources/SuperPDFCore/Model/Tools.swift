@@ -395,6 +395,12 @@ public struct ToolPanel {
     /// The action id a non-Cancel secondary button sends to `ToolProviding.handle(action:)`.
     public static let secondaryAction = "secondary"
 
+    /// Posted by a mode tool (archetype D) when the document interaction changed what its panel shows (Black out: a
+    /// box drawn on the page), with the `DocumentHandle` as the object and the action id under `actionKey`. ToolsKit
+    /// runs `ToolProviding.handle(action:context:)` for that document's open panel, as when a panel button is pressed.
+    public static let performActionNotification = Notification.Name("SuperPDF.ToolPanel.performAction")
+    public static let actionKey = "action"
+
     public init(_ archetype: ToolArchetype, hint: String? = nil, notice: String? = nil, showsScope: Bool = false, steps: [String] = [],
                 currentStep: Int = 0, controls: [ToolControl] = [], moreOptions: [ToolControl] = [], primary: ToolButton,
                 secondary: ToolButton? = ToolButton(Strings.Panel.cancel), output: OutputPolicy = .inPlace,
