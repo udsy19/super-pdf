@@ -169,8 +169,8 @@ What `SuperPDFCore` actually declares, where it differs from or adds to the tabl
   else PDFKit's data); every engine-facing method takes `PDFSource`.
 - **Catalog.** 52 tiles (ux §4.1's rows; its old "54" was a miscount before the AI tiles went). Each tile has an
   `owner` module and `needsDocument`. Owners where no work package named the feature: Contents and Read aloud →
-  ViewerKit, Compare files → FixKit. The Understand section now holds only Read aloud. SF Symbols: those ux §2.4 names,
-  the rest chosen in WP1 (self-test checks they exist).
+  ViewerKit, Compare files → FixKit. Read aloud sits in Fix & check next to Check accessibility (the Understand section
+  went with the AI tools). SF Symbols: those ux §2.4 names, the rest chosen in WP1 (self-test checks they exist).
 - **Menus.** `MenuTree.main` is ux §8 as data; the app builds NSMenus from it. Items without a standard AppKit action
   send `performMenuCommand(_:)` (`MenuCommandResponding`) up the responder chain with the `MenuCommand` as identifier;
   `MenuCommand.tool(_:)` opens a tile. Attachments has no shortcut: ux §2.1 gives it ⌥⌘6, but §6.2 and §8 give ⌥⌘6 to

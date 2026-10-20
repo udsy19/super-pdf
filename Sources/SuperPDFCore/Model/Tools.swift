@@ -30,16 +30,14 @@ public enum ToolID: String, Codable, CaseIterable, Sendable {
     case lockIn = "lock-in", removeHiddenInfo = "remove-hidden-info"
     // Fix & check
     case makeSmaller = "make-smaller", recogniseText = "recognise-text", compareFiles = "compare-files"
-    case checkAccessibility = "check-accessibility", checkForPrinting = "check-for-printing", repair
-    // Understand
-    case readAloud = "read-aloud"
+    case checkAccessibility = "check-accessibility", readAloud = "read-aloud", checkForPrinting = "check-for-printing", repair
     // Scan
     case scanWithIPhone = "scan-with-iphone", scanWithScanner = "scan-with-scanner", fromPhoto = "from-photo"
 }
 
-/// The Tools sheet's sections in the order of a document's life (ux §4); ⌘1–9 jump to them in this order.
+/// The Tools sheet's sections in the order of a document's life (ux §4); ⌘1–8 jump to them in this order.
 public enum ToolSection: String, Codable, CaseIterable, Sendable {
-    case pages, convert, edit, markUp, signAndFill, protect, fixAndCheck, understand, scan
+    case pages, convert, edit, markUp, signAndFill, protect, fixAndCheck, scan
 
     /// The section header, sentence case (ux §4).
     public var title: String {
@@ -51,7 +49,6 @@ public enum ToolSection: String, Codable, CaseIterable, Sendable {
         case .signAndFill: "Sign & fill"
         case .protect: "Protect"
         case .fixAndCheck: "Fix & check"
-        case .understand: "Understand"
         case .scan: "Scan"
         }
     }
@@ -66,7 +63,6 @@ public enum ToolSection: String, Codable, CaseIterable, Sendable {
         case .signAndFill: SPColor.categoryPurple
         case .protect: SPColor.categoryRed
         case .fixAndCheck: SPColor.categoryTeal
-        case .understand: SPColor.categoryIndigo
         case .scan: SPColor.categoryBrown
         }
     }

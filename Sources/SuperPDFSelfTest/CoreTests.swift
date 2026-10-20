@@ -104,7 +104,6 @@ private func coreTokenValues() {
     pair(SPColor.categoryPurple, "#AF52DE", "#BF5AF2")
     pair(SPColor.categoryRed, "#FF3B30", "#FF453A")
     pair(SPColor.categoryTeal, "#30B0C7", "#40C8E0")
-    pair(SPColor.categoryIndigo, "#5856D6", "#5E5CE6")
     pair(SPColor.categoryBrown, "#A2845E", "#AC8E68")
     pair(SPColor.highlightYellow, "#FACD5A", "#5E4613")
     pair(SPColor.highlightGreen, "#7CC868", "#294714")
@@ -112,7 +111,7 @@ private func coreTokenValues() {
     pair(SPColor.highlightPink, "#FB5C89", "#5E2D42")
     pair(SPColor.highlightPurple, "#C885DA", "#422D61")
     pair(SPColor.noteYellow, "#FFEB6B", "#FFEB6B")
-    check(Set(SPColor.all.map(\.name)).count == SPColor.all.count && SPColor.all.count == 26, "26 uniquely named colour tokens")
+    check(Set(SPColor.all.map(\.name)).count == SPColor.all.count && SPColor.all.count == 25, "25 uniquely named colour tokens")
     let hex = try! NSRegularExpression(pattern: "^#[0-9A-F]{6}([0-9A-F]{2})?$")
     for token in SPColor.all {
         for value in [token.light, token.dark] {
@@ -123,7 +122,7 @@ private func coreTokenValues() {
     check(SPColor.highlightYellow.system == nil && NSColor(hex: SPColor.highlightYellow.light).hexRGBA == "#FACD5AFF",
           "markup colours are fixed (Preview's)")
     check(ToolSection.allCases.map(\.color.name) == ["categoryBlue", "categoryGreen", "categoryOrange", "categoryYellow", "categoryPurple",
-                                                       "categoryRed", "categoryTeal", "categoryIndigo", "categoryBrown"],
+                                                       "categoryRed", "categoryTeal", "categoryBrown"],
           "section colours in ux §2.3 order")
 
     // Type (ux §2.2)
@@ -172,7 +171,7 @@ private func coreToolCatalog() {
     check(Set(tiles.map(\.name)).count == tiles.count, "unique names")
     check(tiles.map(\.section).reduce(into: [ToolSection]()) { if $0.last != $1 { $0.append($1) } } == ToolSection.allCases,
           "sections contiguous, in the order of a document's life")
-    check(ToolSection.allCases.map { ToolCatalog.tiles(in: $0).count } == [11, 8, 8, 5, 5, 5, 6, 1, 3], "tiles per section")
+    check(ToolSection.allCases.map { ToolCatalog.tiles(in: $0).count } == [11, 8, 8, 5, 5, 5, 7, 3], "tiles per section")
     for tile in tiles {
         check(!tile.name.isEmpty && !tile.hint.isEmpty, "\(tile.id): name and hint")
         check(followsTone(tile.name) && followsTone(tile.hint), "\(tile.id): curly quotes, real ellipsis")
@@ -343,8 +342,8 @@ private func coreMenus() {
     check(items.allSatisfy { followsTone($0.title) && ($0.title.hasSuffix("…") || !$0.title.hasSuffix(".")) }, "menu titles: real ellipsis")
     // Context shortcuts.
     let sheet = ContextShortcut.all.filter { $0.context == .toolsSheet && $0.combo.modifiers == .command }
-    check(sheet.map(\.combo.description) == (1...9).map { "⌘\($0)" } && sheet.map(\.title) == ToolSection.allCases.map(\.title),
-          "⌘1–9 jump to sections in the sheet")
+    check(sheet.map(\.combo.description) == (1...8).map { "⌘\($0)" } && sheet.map(\.title) == ToolSection.allCases.map(\.title),
+          "⌘1–8 jump to sections in the sheet")
     check(KeyCombo(KeyCombo.deleteKey, []).description == "⌫" && KeyCombo("-").description == "⌘−", "key names")
     check(KeyModifiers([.control, .option, .shift, .command]).symbols == "⌃⌥⇧⌘", "modifier order")
 }

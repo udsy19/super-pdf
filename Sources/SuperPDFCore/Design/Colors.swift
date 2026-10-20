@@ -61,7 +61,6 @@ public enum SPColor {
     public static let categoryPurple = SPColorToken("categoryPurple", light: "#AF52DE", dark: "#BF5AF2", system: .systemPurple)
     public static let categoryRed = SPColorToken("categoryRed", light: "#FF3B30", dark: "#FF453A", system: .systemRed)
     public static let categoryTeal = SPColorToken("categoryTeal", light: "#30B0C7", dark: "#40C8E0", system: .systemTeal)
-    public static let categoryIndigo = SPColorToken("categoryIndigo", light: "#5856D6", dark: "#5E5CE6", system: .systemIndigo)
     public static let categoryBrown = SPColorToken("categoryBrown", light: "#A2845E", dark: "#AC8E68", system: .systemBrown)
 
     // MARK: Markup: Preview's highlight colours, light written into the file, dark for display (ux §2.3)
@@ -86,7 +85,7 @@ public enum SPColor {
     public static let all: [SPColorToken] = [
         windowBackground, sidebar, underPageBackground, controlBackground, separator, label, secondaryLabel, tertiaryLabel, accent,
         destructive, categoryBlue, categoryGreen, categoryOrange, categoryYellow, categoryPurple, categoryRed, categoryTeal,
-        categoryIndigo, categoryBrown, highlightYellow, highlightGreen, highlightBlue, highlightPink, highlightPurple, noteYellow,
+        categoryBrown, highlightYellow, highlightGreen, highlightBlue, highlightPink, highlightPurple, noteYellow,
         redactionApplied,
     ]
 }

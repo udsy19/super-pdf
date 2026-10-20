@@ -126,7 +126,7 @@ Semantic system colours only, so light and dark mode, accent colour choice and I
 | `labelColor` / `secondaryLabelColor` / `tertiaryLabelColor` | #000 85% / 50% / 25% | #FFF 85% / 55% / 25% | text |
 | `controlAccentColor` (default blue) | #007AFF | #0A84FF | Tools button, primary buttons, selection rings, drop highlights, insertion line |
 | `systemRed` | #FF3B30 | #FF453A | Black out marks, destructive confirm buttons only |
-| Category colours (tiles) | blue #007AFF Pages · green #34C759 Convert · orange #FF9500 Edit · yellow #FFCC00 Mark up · purple #AF52DE Sign & fill · red #FF3B30 Protect · teal #30B0C7 Fix & check · indigo #5856D6 Understand · brown #A2845E Scan | dark variants per Apple's system palette | tile icon circles, panel header icons, nothing else |
+| Category colours (tiles) | blue #007AFF Pages · green #34C759 Convert · orange #FF9500 Edit · yellow #FFCC00 Mark up · purple #AF52DE Sign & fill · red #FF3B30 Protect · teal #30B0C7 Fix & check · brown #A2845E Scan | dark variants per Apple's system palette | tile icon circles, panel header icons, nothing else |
 | Highlight colours | Preview's: Yellow #FACD5A, Green #7CC868, Blue #69B0F1, Pink #FB5C89, Purple #C885DA (dark: #5E4613, #294714, #1F3466, #5E2D42, #422D61); notes fill #FFEB6B etc. | | markup, identical to Preview so files look the same in both apps |
 
 Redaction marks: 1.5 pt `systemRed` outline with 10% fill before applying; solid black (or the chosen colour) after.
@@ -218,13 +218,13 @@ encrypted document asks for the password first; dropping never overwrites a file
   "Word → PDF". Return runs the first result. No results: "Nothing called "%@". Try "smaller", "sign" or "Word"."
 - **Recently used** shows up to five tiles by frecency; empty on first launch, in which case the row is hidden.
 - Sections in order, each with its colour (§2.3): **Pages**, **Convert**, **Edit**, **Mark up**, **Sign & fill**,
-  **Protect**, **Fix & check**, **Understand**, **Scan**. Order is the order of a document's life: get the pages right,
-  convert, change, mark, sign, protect, check, understand.
+  **Protect**, **Fix & check**, **Scan**. Order is the order of a document's life: get the pages right, convert, change,
+  mark, sign, protect, check.
 - Tiles that need something the Mac does not have yet are still shown, with a small grey badge: "Needs iPhone nearby"
   (Continuity scan), "Install converter" (LibreOffice for `.ods`). Clicking explains in the panel; nothing is hidden,
   nothing is greyed out without a reason.
 - Right-click a tile → "Add to Toolbar" (one-click favourites) and "Add to Dock Menu".
-- Keyboard: arrows move between tiles, Return opens, ⌘1–9 jump to sections.
+- Keyboard: arrows move between tiles, Return opens, ⌘1–8 jump to sections.
 - The same tiles appear in the **Tools** menu as submenus (Tools › Pages › Rotate Pages…), for people who live in menus,
   and the same actions are in the thumbnail context menu when they apply to pages.
 
@@ -278,9 +278,9 @@ encrypted document asks for the password first; dropping never overwrites a file
 | Fix & check | Recognise text | Make a scan searchable and copyable | ocr, searchable, scan to text | 92 |
 | Fix & check | Compare files | See what changed between two versions | diff, differences, versions | 13 |
 | Fix & check | Check accessibility | Make the PDF work with screen readers | tags, alt text, reading order, pdf/ua, 508 | 97 |
+| Fix & check | Read aloud | Hear the document read to you | speak, voice, listen, audio | 3 |
 | Fix & check | Check for printing | Find problems before sending to a printer | preflight, print production, separations, cmyk, bleed | 94, 95, 96 |
 | Fix & check | Repair | Fix a file that won't open properly | damaged, corrupt, recover, fonts, fast web view | 98, 99, 100 |
-| Understand | Read aloud | Hear the document read to you | speak, voice, listen, audio | 3 |
 | Scan | Scan with iPhone | Use your iPhone's camera as a scanner | continuity camera, phone, document camera | 101 |
 | Scan | Scan with a scanner | Use a flatbed or sheet-fed scanner | image capture, twain, flatbed | 102 |
 | Scan | From a photo | Straighten and clean up a photo of a page | perspective, deskew, picture | 103, 104 |

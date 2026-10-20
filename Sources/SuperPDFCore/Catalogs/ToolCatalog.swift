@@ -5,7 +5,8 @@ import Foundation
 //
 // Names, hints and synonyms are ux §4.1's words (curly quotes and apostrophes, real ellipsis): all 52 rows. Symbols: those ux §2.4 names are used as given; the rest are
 // WP1's choice of the plainest SF Symbol for the verb, open to design review. Ownership where no work package names the
-// feature: Contents and Read aloud → ViewerKit (they live in the sidebar and the viewer), Compare files → FixKit.
+// feature: Contents and Read aloud → ViewerKit (they live in the sidebar and the viewer), Compare files → FixKit. Read
+// aloud sits in Fix & check next to Check accessibility: the Understand section held the AI tools and went with them.
 
 public enum ToolCatalog {
     public static let tiles: [ToolTile] = [
@@ -145,17 +146,15 @@ public enum ToolCatalog {
         ToolTile(.checkAccessibility, .fixAndCheck, "Check accessibility", "Make the PDF work with screen readers",
                  synonyms: ["tags", "alt text", "reading order", "pdf/ua", "508"], symbol: "accessibility", archetype: .presetAndMore,
                  features: [97], owner: .fixKit),
+        ToolTile(.readAloud, .fixAndCheck, "Read aloud", "Hear the document read to you",
+                 synonyms: ["speak", "voice", "listen", "audio"], symbol: "speaker.wave.2", archetype: .oneChoice, features: [3],
+                 owner: .viewerKit),
         ToolTile(.checkForPrinting, .fixAndCheck, "Check for printing", "Find problems before sending to a printer",
                  synonyms: ["preflight", "print production", "separations", "cmyk", "bleed"], symbol: "checkmark.seal",
                  archetype: .presetAndMore, features: [94, 95, 96], owner: .fixKit),
         ToolTile(.repair, .fixAndCheck, "Repair", "Fix a file that won’t open properly",
                  synonyms: ["damaged", "corrupt", "recover", "fonts", "fast web view"], symbol: "wrench.and.screwdriver",
                  archetype: .oneChoice, features: [98, 99, 100], owner: .fixKit),
-
-        // MARK: Understand
-        ToolTile(.readAloud, .understand, "Read aloud", "Hear the document read to you",
-                 synonyms: ["speak", "voice", "listen", "audio"], symbol: "speaker.wave.2", archetype: .oneChoice, features: [3],
-                 owner: .viewerKit),
 
         // MARK: Scan
         ToolTile(.scanWithIPhone, .scan, "Scan with iPhone", "Use your iPhone’s camera as a scanner",
