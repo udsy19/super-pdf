@@ -216,16 +216,19 @@ public struct ToolValues: Codable, Hashable, Sendable {
 
 // MARK: - Panel description
 
-/// A choice in a segmented control, radio group or popup.
+/// A choice in a segmented control, radio group, popup, chip row or checklist, or a row of a `.list`.
 public struct ToolOption: Hashable, Sendable {
     public var id: String
+    /// A trailing parenthesis is set small and secondary on preset cards: "Good (recommended)".
     public var title: String
-    /// The consequence line of a preset ("≈ 1.7 MB"), or a popup item's secondary text.
+    /// The line under a preset's title ("Pictures stay sharp on screen and in print"), or a popup item's secondary text.
     public var detail: String?
     public var symbol: String?
+    /// The figure on the right: a preset's estimate ("≈ 1.7 MB"), a chip's count ("2"), a row's pages ("p. 1, 3").
+    public var value: String?
 
-    public init(_ id: String, _ title: String, detail: String? = nil, symbol: String? = nil) {
-        self.id = id; self.title = title; self.detail = detail; self.symbol = symbol
+    public init(_ id: String, _ title: String, detail: String? = nil, symbol: String? = nil, value: String? = nil) {
+        self.id = id; self.title = title; self.detail = detail; self.symbol = symbol; self.value = value
     }
 }
 
@@ -235,9 +238,16 @@ public enum ToolValueFormat: String, Sendable {
 }
 
 /// One control of a panel, in the order shown (ux §5.1). Each `id` keys its value in `ToolValues`; the value given
-/// here is the default ToolsKit starts from (or the remembered one).
+/// here is the default ToolsKit starts from (ToolsKit remembers choices per tool, never text or files).
+///
+/// At most three *choices* are visible (ux §5.1): radio, popup, slider, stepper, toggle, text, position grid and
+/// checklist count; segmented switches, chips, notes, lists, actions, drop zones and custom views do not. ToolsKit moves
+/// any further choices to the top of More options.
 public enum ToolControl {
-    case segmented(id: String, options: [ToolOption], selected: String)
+    /// With a `label` it is a labelled row ("Format  [Word (.docx) | Rich text (.rtf)]"); without, full width. A mode
+    /// panel's (archetype D) first unlabelled one is drawn in the header, under the hint ("Mark by hand · Find and mark").
+    case segmented(id: String, label: String? = nil, options: [ToolOption], selected: String)
+    /// Preset cards: title, `detail` line under it, `value` figure on the right (archetype B).
     case radio(id: String, options: [ToolOption], selected: String)
     /// At most seven items (ux §5.1).
     case popup(id: String, label: String, options: [ToolOption], selected: String)
@@ -250,36 +260,59 @@ public enum ToolControl {
     case files(id: String, label: String, types: [String], allowsMultiple: Bool)
     /// A 3×3 or 3×2 dot grid (watermark position, page-number position); `selected` counts row by row from the top left.
     case positionGrid(id: String, columns: Int, rows: Int, selected: Int)
-    /// A button inside the panel ("Remove white margins", "Find fields for me"); runs `ToolProviding.handle(action:)`.
-    case action(id: String, title: String, isDestructive: Bool)
-    /// A line of text ("Now: 6.1 MB", "14 of 20 pages have no text yet").
+    /// A bordered button inside the panel ("Remove white margins", "＋ Create signature…"); runs
+    /// `ToolProviding.handle(action:)`.
+    case action(id: String, title: String, isDestructive: Bool, symbol: String? = nil)
+    /// Rows with a checkbox each in a card, the option's `value` on the right (Black out's results, Remove hidden info's
+    /// findings). The value is `.strings` of the ticked ids.
+    case checklist(id: String, items: [ToolOption], selected: [String])
+    /// Wrapping capsules, the option's `value` as a count (Black out's patterns, Request signatures' field kinds). The
+    /// value is `.strings` of the chosen ids (one id when `allowsMultiple` is false).
+    case chips(id: String, options: [ToolOption], selected: [String], allowsMultiple: Bool)
+    /// A read-only card of facts, each with a check, its title and its `value` on the right (To Word: "1 table · p. 3").
+    case list([ToolOption])
+    /// A line of text ("14 of 20 pages have no text yet", "Converted by the built-in converter, on this Mac.").
     case note(String)
-    /// The provider's own view: palettes of mode tools, flow steps.
+    /// The provider's own view: palettes of mode tools, signature pads, signer rows.
     case custom(id: String, make: @MainActor () -> NSView)
+    /// Where the "Pages" scope row sits when `ToolPanel.showsScope`; without it, the row follows the last choice.
+    case scope
+    /// Where the "More options" disclosure sits; without it, the disclosure follows the controls.
+    case moreOptions
 
-    /// The value key; nil for notes.
+    /// The value key; nil for controls that are only text or layout (notes, lists, the scope and More options places).
     public var id: String? {
         switch self {
-        case .segmented(let id, _, _), .radio(let id, _, _), .popup(let id, _, _, _), .slider(let id, _, _, _, _, _),
+        case .segmented(let id, _, _, _), .radio(let id, _, _), .popup(let id, _, _, _), .slider(let id, _, _, _, _, _),
              .stepper(let id, _, _, _), .toggle(let id, _, _), .text(let id, _, _, _, _), .files(let id, _, _, _),
-             .positionGrid(let id, _, _, _), .action(let id, _, _), .custom(let id, _):
+             .positionGrid(let id, _, _, _), .action(let id, _, _, _), .checklist(let id, _, _), .chips(let id, _, _, _),
+             .custom(let id, _):
             id
-        case .note:
+        case .list, .note, .scope, .moreOptions:
             nil
         }
     }
 
-    /// The value this control starts with; nil for controls that hold none (notes, actions, custom views).
+    /// The value this control starts with; nil for controls that hold none (notes, lists, actions, custom views, places).
     public var initialValue: ToolValue? {
         switch self {
-        case .segmented(_, _, let selected), .radio(_, _, let selected), .popup(_, _, _, let selected): .string(selected)
+        case .segmented(_, _, _, let selected), .radio(_, _, let selected), .popup(_, _, _, let selected): .string(selected)
         case .slider(_, _, _, _, let value, _): .double(value)
         case .stepper(_, _, _, let value): .int(value)
         case .toggle(_, _, let isOn): .bool(isOn)
         case .text(_, _, _, let value, _): .string(value)
         case .files: .files([])
         case .positionGrid(_, _, _, let selected): .int(selected)
-        case .action, .note, .custom: nil
+        case .checklist(_, _, let selected), .chips(_, _, let selected, _): .strings(selected)
+        case .action, .list, .note, .custom, .scope, .moreOptions: nil
+        }
+    }
+
+    /// Counts toward the three visible choices (ux §5.1).
+    public var isChoice: Bool {
+        switch self {
+        case .radio, .popup, .slider, .stepper, .toggle, .text, .positionGrid, .checklist: true
+        case .segmented, .files, .action, .chips, .list, .note, .custom, .scope, .moreOptions: false
         }
     }
 }
@@ -321,33 +354,51 @@ public struct ToolConfirmation: Hashable, Sendable {
 }
 
 /// A panel, as a provider describes it for the current values; ToolsKit renders it in the shape of its archetype
-/// (ux §5.1–§5.2) and asks again whenever a value changes (debounced, ux §2.5).
+/// (ux §5.1–§5.2) and asks again whenever a value, the scope or the selection changes, and after each preview.
 public struct ToolPanel {
+    /// The value key under which ToolsKit keeps archetype G's step (`.int`, 0-based): Next adds one, Back takes one.
+    /// Providers read it to describe the step and may set it from `handle(action:)` to jump.
+    public static let stepValue = "step"
+
     public var archetype: ToolArchetype
+    /// The header's hint when it says more than the tile's ("Shrinks the file so it’s easier to send. The pages stay
+    /// the same."); nil shows the tile's hint.
+    public var hint: String?
     /// A line under the hint (Crop's "Cropping hides content without removing it…").
     public var notice: String?
-    /// Shows the "Pages:" scope popup under the hint.
+    /// Shows the "Pages" scope popup (at `ToolControl.scope`, else after the last choice).
     public var showsScope: Bool
-    /// Archetype G's numbered steps ("Who", "Where", "Send"); `currentStep` is 0-based.
+    /// Archetype G's numbered steps ("Who", "Where", "Send"), drawn under the hint; `currentStep` is 0-based and is
+    /// `context.values.int(ToolPanel.stepValue)` unless the provider jumps. Before the last step the primary button is
+    /// Next and the footer shows Back.
     public var steps: [String]
     public var currentStep: Int
-    /// At most three visible controls (ux §5.1).
+    /// At most three visible choices (see `ToolControl`).
     public var controls: [ToolControl]
-    /// Behind the "More options" disclosure, closed by default.
+    /// Behind the "More options" disclosure, closed by default; ToolsKit remembers it open or closed per tool.
     public var moreOptions: [ToolControl]
+    /// One verb. A title ending in "…" ("Save as Word…") means ToolsKit asks where to save (a save panel, or a folder
+    /// for `.folder` outputs) starting at the resolved destination before the run.
     public var primary: ToolButton
-    /// Cancel by default; a red text button when relevant ("Remove watermark").
+    /// Cancel by default (closes the panel); any other title ("Remove watermark", red) runs
+    /// `handle(action: ToolPanel.secondaryAction)`.
     public var secondary: ToolButton?
     /// Drives the "Saves “Report (smaller).pdf” next to the original · Change…" line.
     public var output: OutputPolicy
+    /// Shown above the footer. ToolsKit shows `ToolAvailability.unavailable`'s sentence here (and disables the primary
+    /// button) when the provider gives none; `.needsDevice` and `.needsConverter` panels explain themselves.
     public var message: ToolMessage?
+    /// Asked in a sheet before the run (Black out).
     public var confirmation: ToolConfirmation?
 
-    public init(_ archetype: ToolArchetype, notice: String? = nil, showsScope: Bool = false, steps: [String] = [], currentStep: Int = 0,
-                controls: [ToolControl] = [], moreOptions: [ToolControl] = [], primary: ToolButton,
+    /// The action id a non-Cancel secondary button sends to `ToolProviding.handle(action:)`.
+    public static let secondaryAction = "secondary"
+
+    public init(_ archetype: ToolArchetype, hint: String? = nil, notice: String? = nil, showsScope: Bool = false, steps: [String] = [],
+                currentStep: Int = 0, controls: [ToolControl] = [], moreOptions: [ToolControl] = [], primary: ToolButton,
                 secondary: ToolButton? = ToolButton(Strings.Panel.cancel), output: OutputPolicy = .inPlace,
                 message: ToolMessage? = nil, confirmation: ToolConfirmation? = nil) {
-        self.archetype = archetype; self.notice = notice; self.showsScope = showsScope; self.steps = steps
+        self.archetype = archetype; self.hint = hint; self.notice = notice; self.showsScope = showsScope; self.steps = steps
         self.currentStep = currentStep; self.controls = controls; self.moreOptions = moreOptions; self.primary = primary
         self.secondary = secondary; self.output = output; self.message = message; self.confirmation = confirmation
     }
@@ -446,7 +497,8 @@ public enum ToolPreview {
     /// Drawn over each visible page in page space (points, origin at the crop box's lower-left); ToolsKit hosts it in a
     /// `PDFPageOverlayViewProvider`.
     case overlay(@MainActor (_ page: PDFPage, _ context: CGContext) -> Void)
-    /// Lines like "Now: 6.1 MB", "Pages: 12", "Converted by: LibreOffice".
+    /// Lines like "Now: 6.1 MB · 12 pages · 9 pictures", drawn at the top of the panel: "Label: value" as a row with the
+    /// label on the left and the value on the right, its first part (up to " · ") emphasised; other lines as notes.
     case summary([String])
 }
 

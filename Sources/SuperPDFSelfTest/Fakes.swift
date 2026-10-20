@@ -637,6 +637,24 @@ final class FakeTools: ToolRegistry {
     func showToolsSheet(for document: DocumentHandle?) { sheetShown += 1 }
     func openPanel(_ tool: ToolID, for document: DocumentHandle?, inputs: [URL]) { openedPanels.append(tool) }
     func closePanel(for document: DocumentHandle) {}
+
+    /// A plain label with the banner's text.
+    func makeBannerView(_ banner: ResultBanner, in document: DocumentHandle, dismiss: @escaping @MainActor () -> Void) -> NSView {
+        NSTextField(labelWithString: banner.text)
+    }
+
+    func makeToolbarItem(_ tool: ToolID) -> NSToolbarItem {
+        let item = NSToolbarItem(itemIdentifier: tool.toolbarItemIdentifier)
+        item.label = ToolCatalog.tile(tool).name
+        return item
+    }
+
+    func makeDockMenu() -> NSMenu {
+        let menu = NSMenu()
+        menu.addItem(withTitle: Strings.ToolsSheet.allTools, action: nil, keyEquivalent: "")
+        for tool in Defaults[.dockMenuTools] { menu.addItem(withTitle: ToolCatalog.tile(tool).menuTitle, action: nil, keyEquivalent: "") }
+        return menu
+    }
 }
 
 /// A provider for one tile, running a closure (ToolsKit's and modules' host tests).
