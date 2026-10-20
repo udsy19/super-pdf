@@ -1,0 +1,30 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Super PDF — Request signatures</title><link rel="stylesheet" href="shared.css"></head>
+<body><script src="shared.js"></script>
+<script>
+const I = SP.I;
+const panel = `<div class="panel">
+  ${SP.panelHeader({cat:"c-purple", icon:"people", title:"Request signatures", hint:"Send this to people to sign. They can sign in any PDF app and send it back; we match the files when they return.", after:`<div class="steps"><span>1 Who</span><span class="on">2 Where</span><span>3 Send</span></div>`})}
+  <div class="pc">
+    <div class="note">Click the page to place a field for the selected person.</div>
+    <div class="sigrow" style="border-color:var(--purple);background:rgba(175,82,222,.08)"><span class="av" style="background:var(--purple)">ME</span><div class="nm"><b>Margaret Ellison</b><small>m.ellison@orchardlets.co.uk</small></div><span class="st">2 fields</span></div>
+    <div class="sigrow"><span class="av" style="background:var(--teal)">PN</span><div class="nm"><b>Priya Natarajan</b><small>priya.natarajan@example.com</small></div><span class="st">2 fields</span></div>
+    <div class="chips"><span class="chip on">${I.sig} Signature</span><span class="chip">Initials</span><span class="chip">Date</span><span class="chip">Name</span><span class="chip">Tick box</span></div>
+    <div class="check on"><span class="box"></span><span>Sign in this order</span></div>
+    <div class="note">Fields show in each person’s colour. Everything stays on this Mac; nothing is uploaded.</div>
+  </div>
+  <div class="pf">
+    <div style="display:flex;gap:8px;width:100%"><div class="btn" style="flex:0 0 auto">${I.chevL} Back</div><div class="btn-primary" style="flex:1">Next: Send</div></div>
+    <div class="btn-text">Cancel</div>
+  </div>
+</div>`;
+const extra = ``;
+SP.render({ title: "Lease agreement.pdf", selected: [3], panelHTML: panel, wellHTML: SP.pageHTML(3, {extra}) });
+requestAnimationFrame(() => {
+  const page = document.querySelector('.page'); const pr = page.getBoundingClientRect();
+  const lines = page.querySelectorAll('.sigline > div');
+  const cols = [["Margaret","var(--purple)","rgba(175,82,222,.14)","rgba(175,82,222,.5)"],["Priya","var(--teal)","rgba(48,176,199,.14)","rgba(48,176,199,.6)"]];
+  lines.forEach((el, i) => { const r = el.getBoundingClientRect(); const x = r.left - pr.left, y = r.top - pr.top; const [nm, col, bg, bd] = cols[i];
+    page.insertAdjacentHTML('beforeend', `<div class="field-hl" style="left:${x}px;top:${y-46}px;width:${r.width-78}px;height:40px;background:${bg};border-color:${bd}"></div><div class="field-tag" style="left:${x}px;top:${y-60}px;background:${col}">${nm} · Signature</div>
+      <div class="field-hl" style="left:${x+r.width-70}px;top:${y-46}px;width:70px;height:40px;background:${bg};border-color:${bd}"></div><div class="field-tag" style="left:${x+r.width-70}px;top:${y-60}px;background:${col}">Date</div>`); });
+});
+</script></body></html>

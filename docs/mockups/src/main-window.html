@@ -1,0 +1,22 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Super PDF — Main window</title><link rel="stylesheet" href="shared.css"></head>
+<body><script src="shared.js"></script>
+<script>
+SP.render({
+  title: "Lease agreement.pdf", edited: false, selected: [1],
+  toolbar: { formFilling: false },
+  wellHTML: SP.pageHTML(1) + SP.pageHTML(2),
+  overlayHTML: `<div class="ctx-menu" style="left:150px;top:120px">
+    <div>Rotate Left<span class="k">⌘L</span></div>
+    <div class="on">Rotate Right<span class="k">⌘R</span></div>
+    <div>Delete Page<span class="k">⌫</span></div>
+    <hr>
+    <div>Extract Page…</div>
+    <div>Insert Page<span class="k">▸</span></div>
+    <div>Duplicate</div>
+    <hr>
+    <div>Black out this page…</div>
+    <div>Make smaller…</div>
+    <div>Share Page…</div>
+  </div>`
+});
+</script></body></html>

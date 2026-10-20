@@ -1,0 +1,30 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Super PDF — Sign</title><link rel="stylesheet" href="shared.css"></head>
+<body><script src="shared.js"></script>
+<script>
+const I = SP.I;
+const panel = `<div class="panel">
+  ${SP.panelHeader({cat:"c-purple", icon:"sig", title:"Sign", hint:"Put your signature on the page. Click a signature, then click where it goes.", after:`<div class="steps" style="margin:10px 0 0 0"><span class="on">My signature</span><span>With a certificate</span></div>`})}
+  <div class="pc">
+    <div class="sigpad on"><span class="s">Priya Natarajan</span><span class="chk">${I.check}</span><span class="caption">Saved on this Mac</span></div>
+    <div class="sigpad"><span class="s small">PN</span><span class="caption">Initials</span></div>
+    <div class="btn" style="align-self:flex-start">${I.plus} Create signature…</div>
+    <div class="note">You can draw on the trackpad, hold a signed piece of paper up to the camera, or sign on your iPhone.</div>
+    <div class="ctl-row"><label>Date</label><div class="check on"><span class="box"></span><span>Add today’s date next to it</span></div></div>
+  </div>
+  <div class="pf">
+    <div class="outloc">Saves <b>“Lease agreement (signed).pdf”</b> · the original is untouched</div>
+    <div class="btn-primary">Sign and save…</div>
+    <div class="btn-text">Cancel</div>
+  </div>
+</div>`;
+const extra = ``;
+SP.render({ title: "Lease agreement.pdf", selected: [3], panelHTML: panel, wellHTML: SP.pageHTML(3, {extra}) });
+requestAnimationFrame(() => {
+  const page = document.querySelector('.page'); const pr = page.getBoundingClientRect();
+  const lines = page.querySelectorAll('.sigline > div'); const r = lines[1].getBoundingClientRect();
+  const x = r.left - pr.left, y = r.top - pr.top;
+  page.insertAdjacentHTML('beforeend', `<div class="sig-frame" style="left:${x-4}px;top:${y-48}px;width:${r.width+8}px;height:46px"><i style="left:-4px;top:-4px"></i><i style="right:-4px;top:-4px"></i><i style="left:-4px;bottom:-4px"></i><i style="right:-4px;bottom:-4px"></i></div>
+    <div class="sig-img" style="left:${x+8}px;top:${y-44}px">Priya Natarajan</div>
+    <div style="position:absolute;left:${x+r.width-70}px;top:${y+16}px;font-family:var(--font);font-size:9.5px;color:#333">20 Oct 2026</div>`);
+});
+</script></body></html>

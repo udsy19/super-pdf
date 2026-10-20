@@ -1,0 +1,13 @@
+.DS_Store
+.build/
+.build-*/
+build/
+dist/
+.signing/
+.swiftpm/
+Models/
+*.gguf
+*.bin
+*.mlmodelc/
+node_modules/
+docs/mockups/chrome-cdp/

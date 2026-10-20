@@ -1,0 +1,47 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Super PDF — Tools sheet</title><link rel="stylesheet" href="shared.css"></head>
+<body><script src="shared.js"></script>
+<script>
+const I = SP.I;
+const tile = (cls, icon, nm, hn, hover) => `<div class="tile ${hover ? "hover" : ""}"><div class="ic ${cls}">${I[icon]}</div><div class="nm">${nm}</div><div class="hn">${hn}</div></div>`;
+const sec = (col, name, tiles) => `<h2><i style="background:${col}"></i>${name}</h2><div class="grid">${tiles.join("")}</div>`;
+const sheet = `<div class="sheet">
+  <div class="sh"><span class="close">${I.x}</span><h1>What do you want to do?</h1>
+    <div class="searchbig">${I.search}<span>Search tools — try “smaller”, “sign”, “Word”, “black out”</span></div></div>
+  <div class="sb">
+    <h2>Recently used</h2><div class="grid">
+      ${tile("c-teal","shrink","Make smaller","Shrink the file so it’s easier to send")}
+      ${tile("c-purple","sig","Sign","Put your signature on the page, or sign with a certificate")}
+      ${tile("c-blue","docs","Combine files","Put several files into one PDF")}
+      ${tile("c-green","word","To Word","Make a Word document you can edit")}
+      ${tile("c-red","redact","Black out","Permanently hide names, numbers or anything private")}
+    </div>
+    ${sec("var(--blue)","Pages",[
+      tile("c-blue","docs","Combine files","Put several files into one PDF"),
+      tile("c-blue","grid","Rearrange pages","Drag pages into a new order", true),
+      tile("c-blue","split","Split","Cut this PDF into several files"),
+      tile("c-blue","extract","Extract pages","Save some pages as their own PDF"),
+      tile("c-blue","rotate","Rotate pages","Turn pages the right way up"),
+      tile("c-blue","trash","Delete pages","Remove pages you don’t need"),
+      tile("c-blue","crop","Crop","Trim the edges of pages"),
+      tile("c-blue","insert","Insert pages","Add a blank page or pages from another file"),
+      tile("c-blue","hash","Number pages","Add page numbers"),
+      tile("c-blue","booklet","Booklet","Lay pages out for printing and folding"),
+    ])}
+    ${sec("var(--green)","Convert",[
+      tile("c-green","word","To Word","Make a Word document you can edit"),
+      tile("c-green","excel","To Excel","Pull tables into a spreadsheet"),
+      tile("c-green","ppt","To PowerPoint","Make slides from the pages"),
+      tile("c-green","photo","To images","Save pages as JPG or PNG"),
+      tile("c-green","any","Any file → PDF","Word, Excel, PowerPoint, Pages, web pages, text, EPUB, ZIP…"),
+    ])}
+    ${sec("var(--orange)","Edit",[
+      tile("c-orange","text","Edit text & images","Change words and pictures on the page"),
+      tile("c-orange","header","Headers & footers","Put a title, date or numbers at the top or bottom"),
+      tile("c-orange","drop","Watermark","Stamp “Draft” or a logo across every page"),
+      tile("c-orange","stamp","Stamps","Add “Approved”, “Received”, a date or your own stamp"),
+      tile("c-orange","batch","Do this to many files","Run tools on a whole folder at once"),
+    ])}
+  </div>
+</div>`;
+SP.render({ title: "Lease agreement.pdf", selected: [1], sheetHTML: sheet });
+</script></body></html>

@@ -1,0 +1,22 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Super PDF — Make smaller</title><link rel="stylesheet" href="shared.css"></head>
+<body><script src="shared.js"></script>
+<script>
+const I = SP.I;
+const panel = `<div class="panel">
+  ${SP.panelHeader({cat:"c-teal", icon:"shrink", title:"Make smaller", hint:"Shrinks the file so it’s easier to send. The pages stay the same."})}
+  <div class="pc">
+    <div class="kv"><span>Now</span><span><b style="color:var(--label)">6.1 MB</b> · 12 pages · 9 pictures</span></div>
+    <div class="radio on"><span class="dot"></span><div class="t"><b>Good <small>(recommended)</small></b><small>Pictures stay sharp on screen and in print</small></div><span class="sz">≈ 2.8 MB</span></div>
+    <div class="radio"><span class="dot"></span><div class="t"><b>Email</b><small>Smallest. Fine for reading, pictures a little softer</small></div><span class="sz">≈ 1.7 MB</span></div>
+    <div class="radio"><span class="dot"></span><div class="t"><b>Best quality</b><small>Only removes what nobody will see</small></div><span class="sz">≈ 5.1 MB</span></div>
+    <div class="note">Comments, form entries and bookmarks are kept.</div>
+    <div class="disclosure">${I.chevR} More options</div>
+  </div>
+  <div class="pf">
+    <div class="outloc">Saves <b>“Lease agreement (smaller).pdf”</b> next to the original · <a>Change…</a></div>
+    <div class="btn-primary">Make smaller</div>
+    <div class="btn-text">Cancel</div>
+  </div>
+</div>`;
+SP.render({ title: "Lease agreement.pdf", selected: [1], panelHTML: panel, wellHTML: SP.pageHTML(1) + SP.pageHTML(2) });
+</script></body></html>

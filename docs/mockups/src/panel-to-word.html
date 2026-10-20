@@ -1,0 +1,26 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Super PDF — To Word</title><link rel="stylesheet" href="shared.css"></head>
+<body><script src="shared.js"></script>
+<script>
+const I = SP.I;
+const panel = `<div class="panel">
+  ${SP.panelHeader({cat:"c-green", icon:"word", title:"To Word", hint:"Makes a Word document you can edit. Text, headings, tables and pictures come across."})}
+  <div class="pc">
+    <div class="ctl-row"><label>Format</label><div class="segc" style="flex:1"><span class="on">Word (.docx)</span><span>Rich text (.rtf)</span></div></div>
+    <div class="ctl-row"><label>Layout</label><div class="segc" style="flex:1"><span class="on">Keep the look</span><span>Flowing text</span></div></div>
+    <div class="note">“Keep the look” places text where it is on the page — best for forms and brochures. “Flowing text” makes paragraphs that reflow — best for letters and reports.</div>
+    <div class="ctl-row"><label>Pages</label><div class="popup grow">All 12 pages<span class="arrows">${I.updown}</span></div></div>
+    <div class="list">
+      <div class="row"><span class="cat c-green" style="width:20px;height:20px">${I.check}</span>Text and headings <span class="pg">12 pages</span></div>
+      <div class="row"><span class="cat c-green" style="width:20px;height:20px">${I.check}</span>1 table <span class="pg">p. 3</span></div>
+      <div class="row"><span class="cat c-green" style="width:20px;height:20px">${I.check}</span>9 pictures <span class="pg">kept</span></div>
+    </div>
+    <div class="note">Converted by the built-in converter, on this Mac.</div>
+  </div>
+  <div class="pf">
+    <div class="outloc">Saves <b>“Lease agreement.docx”</b> next to the original · <a>Change…</a></div>
+    <div class="btn-primary">Save as Word…</div>
+    <div class="btn-text">Cancel</div>
+  </div>
+</div>`;
+SP.render({ title: "Lease agreement.pdf", selected: [1], panelHTML: panel, wellHTML: SP.pageHTML(1) + SP.pageHTML(2) });
+</script></body></html>

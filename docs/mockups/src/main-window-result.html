@@ -1,0 +1,11 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Super PDF — Result banner</title><link rel="stylesheet" href="shared.css"></head>
+<body><script src="shared.js"></script>
+<script>
+const I = SP.I;
+SP.render({
+  title: "Lease agreement (smaller).pdf", selected: [1],
+  bannerHTML: `<div class="banner"><span class="ic">${I.check}</span><span>Done. The file is <b>72% smaller</b> (6.1 MB → 1.7 MB). Saved next to the original.</span>
+    <span class="acts"><span class="btn sm">Show in Finder</span><span class="btn sm">${I.share} Share</span><span class="btn sm">Undo</span></span></div>`,
+  wellHTML: SP.pageHTML(1) + SP.pageHTML(2)
+});
+</script></body></html>

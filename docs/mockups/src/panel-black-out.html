@@ -1,0 +1,49 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Super PDF — Black out</title><link rel="stylesheet" href="shared.css"></head>
+<body><script src="shared.js"></script>
+<script>
+const I = SP.I;
+const panel = `<div class="panel">
+  ${SP.panelHeader({cat:"c-red", icon:"redact", title:"Black out", hint:"Permanently hides names, numbers or anything private. Your original file stays as it is.", after:`<div class="steps" style="margin:10px 0 0 0"><span>Mark by hand</span><span class="on">Find and mark</span></div>`})}
+  <div class="pc">
+    <div class="field"><span>Natarajan</span><span class="caret"></span></div>
+    <div class="chips">
+      <span class="chip on">Phone numbers <span class="cnt" style="color:inherit">2</span></span>
+      <span class="chip on">Emails <span class="cnt" style="color:inherit">2</span></span>
+      <span class="chip">Card numbers</span>
+      <span class="chip on">National Insurance <span class="cnt" style="color:inherit">1</span></span>
+      <span class="chip">Dates</span>
+      <span class="chip">Pattern…</span>
+    </div>
+    <div class="note"><b style="color:var(--label)">7 found on 2 pages</b></div>
+    <div class="list">
+      <div class="row"><span class="check on"><span class="box"></span></span>“Natarajan” <span class="pg">p. 1, 3</span></div>
+      <div class="row"><span class="check on"><span class="box"></span></span>07700 900 417 <span class="pg">p. 3</span></div>
+      <div class="row"><span class="check on"><span class="box"></span></span>01225 448 912 <span class="pg">p. 3</span></div>
+      <div class="row"><span class="check on"><span class="box"></span></span>priya.natarajan@example.com <span class="pg">p. 3</span></div>
+      <div class="row"><span class="check on"><span class="box"></span></span>QQ 12 34 56 C <span class="pg">p. 3</span></div>
+    </div>
+    <div class="check on"><span class="box"></span><span>Also remove hidden information (metadata, comments)</span></div>
+    <div class="check"><span class="box"></span><span>Write “REDACTED” over the boxes</span></div>
+  </div>
+  <div class="pf">
+    <div class="outloc">Saves <b>“Lease agreement (blacked out).pdf”</b> · the original is untouched</div>
+    <div class="btn-primary red">Black out 7 items</div>
+    <div class="btn-text">Cancel</div>
+  </div>
+</div>`;
+const page3 = SP.pageHTML(3);
+SP.render({ title: "Lease agreement.pdf", selected: [3], panelHTML: panel, wellHTML: page3 });
+// draw redaction boxes around the matched spans
+requestAnimationFrame(() => {
+  const page = document.querySelector('.page'); const pr = page.getBoundingClientRect();
+  document.querySelectorAll('.ph-land,.ph-ten,.em-land,.em-ten,.ni').forEach(el => {
+    for (const r of el.getClientRects()) page.insertAdjacentHTML('beforeend', `<div class="redact-box" style="left:${r.left-pr.left-2}px;top:${r.top-pr.top-1}px;width:${r.width+4}px;height:${r.height+2}px"></div>`);
+  });
+  // name occurrences
+  const walker = document.createTreeWalker(page, NodeFilter.SHOW_TEXT);
+  let n; const hits = [];
+  while ((n = walker.nextNode())) { let i = n.data.indexOf('Natarajan'); while (i >= 0) { hits.push([n, i]); i = n.data.indexOf('Natarajan', i + 1); } }
+  hits.forEach(([node, i]) => { const rg = document.createRange(); rg.setStart(node, i); rg.setEnd(node, i + 9); const r = rg.getBoundingClientRect();
+    page.insertAdjacentHTML('beforeend', `<div class="redact-box" style="left:${r.left-pr.left-2}px;top:${r.top-pr.top-1}px;width:${r.width+4}px;height:${r.height+2}px"></div>`); });
+});
+</script></body></html>

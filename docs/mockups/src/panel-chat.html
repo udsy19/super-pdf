@@ -1,0 +1,26 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Super PDF — Chat with this PDF</title><link rel="stylesheet" href="shared.css"></head>
+<body><script src="shared.js"></script>
+<script>
+const I = SP.I;
+const panel = `<div class="panel chat">
+  ${SP.panelHeader({cat:"c-indigo", icon:"chat", title:"Chat with this PDF", hint:"Ask anything about “Lease agreement.pdf”. Answers come with page numbers.", after:`<div class="modelline">Qwen3.5 2B · runs on this Mac · nothing leaves it</div>`})}
+  <div class="msgs">
+    <div class="msg user">When is the rent due and how much is it?</div>
+    <div class="msg ai"><p>Rent is <b>£1,450 a month</b>, paid in advance on the <b>first day of each month</b> by standing order.<span class="cite">p. 1</span></p>
+      <p>The first payment is due on or before 1 October 2026, and the schedule on page 3 lists each month up to January 2027.<span class="cite">p. 3</span></p>
+      <div class="acts"><span>Copy</span><span>Save as note</span><span>Add as comment</span></div></div>
+    <div class="msg user">What happens if I want to leave early?</div>
+    <div class="msg ai"><p>The tenancy is a fixed term of twelve months, ending 30 September 2027. Either side can give <b>two months’ written notice</b>, but only once that fixed term has run out.<span class="cite">p. 1</span></p>
+      <p>There is no break clause in the pages I can see, so leaving before then would need the landlord’s agreement.</p>
+      <div class="acts"><span>Copy</span><span>Save as note</span><span>Add as comment</span></div></div>
+    <div class="chips"><span class="chip">Summarise</span><span class="chip">List every date</span><span class="chip">Explain clause 5 simply</span></div>
+  </div>
+  <div class="composer"><div class="field"><span class="ph-text">Ask a question…</span><span class="send">${I.send}</span></div></div>
+</div>`;
+SP.render({ title: "Lease agreement.pdf", selected: [1], panelHTML: panel, wellHTML: SP.pageHTML(1) });
+requestAnimationFrame(() => {
+  const page = document.querySelector('.page');
+  const walker = document.createTreeWalker(page, NodeFilter.SHOW_TEXT); let n;
+  while ((n = walker.nextNode())) { const i = n.data.indexOf('£1,450 per calendar month'); if (i >= 0) { const rg = document.createRange(); rg.setStart(n, i); rg.setEnd(n, i + 25); const s = document.createElement('span'); s.className = 'hl'; rg.surroundContents(s); break; } }
+});
+</script></body></html>

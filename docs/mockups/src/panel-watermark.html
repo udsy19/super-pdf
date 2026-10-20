@@ -1,0 +1,25 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Super PDF — Watermark</title><link rel="stylesheet" href="shared.css"></head>
+<body><script src="shared.js"></script>
+<script>
+const I = SP.I;
+const panel = `<div class="panel">
+  ${SP.panelHeader({cat:"c-orange", icon:"drop", title:"Watermark", hint:"Stamps a word or a logo across every page. You can see it on the page as you type."})}
+  <div class="pc">
+    <div class="segc"><span class="on">Text</span><span>Picture</span></div>
+    <div class="field focus"><span>DRAFT</span><span class="caret"></span></div>
+    <div class="ctl-row"><label>Lightness</label><div class="slider" style="--p:30%"></div><span class="val">30%</span></div>
+    <div class="ctl-row"><label>Angle</label><div class="popup grow">Diagonal<span class="arrows">${I.updown}</span></div></div>
+    <div class="ctl-row"><label>Pages</label><div class="popup grow">All pages<span class="arrows">${I.updown}</span></div></div>
+    <div class="disclosure">${I.chevR} More options</div>
+    <div class="note">Drag the word on the page to move it. Nothing is saved until you click Add watermark.</div>
+  </div>
+  <div class="pf">
+    <div class="btn-primary">Add watermark</div>
+    <div class="btn-text">Cancel</div>
+  </div>
+</div>`;
+const extra = `<div class="wm">DRAFT</div>
+  <div class="wm-handle" style="left:46px;top:300px"></div><div class="wm-handle" style="left:500px;top:300px"></div>
+  <div class="wm-handle" style="left:46px;top:430px"></div><div class="wm-handle" style="left:500px;top:430px"></div>`;
+SP.render({ title: "Lease agreement.pdf", edited: true, selected: [1], panelHTML: panel, wellHTML: SP.pageHTML(1, {extra}) + SP.pageHTML(2, {extra: '<div class="wm">DRAFT</div>'}) });
+</script></body></html>
