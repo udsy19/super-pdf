@@ -77,11 +77,6 @@ public protocol FormFilling: AnyObject {
     func exportData(from document: DocumentHandle, as format: FormDataFormat, to destination: URL) async throws
     /// XFA forms are shown static with a notice (ux §7.4).
     func isXFA(_ document: DocumentHandle) -> Bool
-    /// PDFKit drops form data whenever it reads or writes a file: every field's format, keystroke, validate and
-    /// calculate scripts (/AA), the calculation order (/CO) and the form's default appearance. FormsKit keeps them while
-    /// the document is open; DocumentKit asks for this function on the main actor when a save starts and runs it, off
-    /// the main actor, on the bytes PDFKit wrote. Nil when there is nothing to put back.
-    func formRestorer(for document: DocumentHandle) -> (@Sendable (Data) throws -> Data)?
 }
 
 @MainActor

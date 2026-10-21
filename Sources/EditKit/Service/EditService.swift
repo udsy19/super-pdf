@@ -87,19 +87,17 @@ public final class EditService: ContentEditing {
 enum EditEngine {
     /// Runs `body` on a private model of the document's bytes off the main actor and returns the `.contents` undo group
     /// (before → after). An appended save keeps earlier bytes (and signatures) intact; when the file can't take one
-    /// (encrypted, rebuilt by recovery, made here) the whole file is written. The save is stamped and kept by
-    /// `EditSource`, so the next edit starts from these bytes rather than PDFKit's redraw of them.
+    /// (encrypted, rebuilt by recovery, made here) the whole file is written. Once applied, the bytes are the document's
+    /// contents (DocumentKit), so the next edit starts from them.
     @MainActor
     static func edit(_ document: DocumentHandle, name: String, _ body: @escaping @Sendable (PDFModel) throws -> Void) async throws -> UndoGroup {
         let source = EditSource.source(for: document)
-        let (before, after, revision) = try await Task.detached(priority: .userInitiated) { () throws -> (Data, Data, String) in
+        let (before, after) = try await Task.detached(priority: .userInitiated) { () throws -> (Data, Data) in
             let before = try source.bytes()
             let model = try PDFModel(data: before, password: source.password)
             try body(model)
-            let revision = EditSource.stamp(model)
-            return (before, try save(model), revision)
+            return (before, try save(model))
         }.value
-        EditSource.remember(after, revision: revision, password: source.password)
         return UndoGroup(name, .contents(before: before, after: after))
     }
 

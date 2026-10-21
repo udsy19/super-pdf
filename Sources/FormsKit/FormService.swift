@@ -359,13 +359,6 @@ final class FormService: FormServicing {
 
     func isXFA(_ document: DocumentHandle) -> Bool { facts(for: document).isXFA }
 
-    func formRestorer(for document: DocumentHandle) -> (@Sendable (Data) throws -> Data)? {
-        let facts = facts(for: document)
-        guard !facts.isEmpty else { return nil }
-        let password = document.password
-        return { data in try FormFile.restore(facts, into: data, password: password) }
-    }
-
     // MARK: FormBuilding
 
     func detectFields(in document: DocumentHandle, pages: [Int]) async throws -> [FormField] {

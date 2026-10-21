@@ -361,7 +361,7 @@ final class FakeMarkup: Annotating {
     func validate(_ command: MenuCommand, in document: DocumentHandle) -> Bool? {
         [.highlightText, .underlineText, .strikeThroughText, .rectangle, .oval, .line, .arrow, .text, .note, .loupe].contains(command) ? true : nil
     }
-    func annotationRestorer(for document: DocumentHandle) -> (@Sendable (Data) throws -> Data)? { nil }
+    func annotationRestorer(for document: DocumentHandle) -> AnnotationRestorer? { nil }
     func attachFile(_ file: URL, to page: Int, at point: CGPoint, in document: DocumentHandle) throws -> UndoGroup { noUndo("Attach File") }
     func addStamp(_ image: Data, on page: Int, in rect: CGRect, in document: DocumentHandle) throws -> UndoGroup { noUndo("Add Stamp") }
 }
@@ -408,7 +408,6 @@ final class FakeForms: FormServicing {
         try JSONEncoder().encode(formFields).write(to: destination)
     }
     func isXFA(_ document: DocumentHandle) -> Bool { false }
-    func formRestorer(for document: DocumentHandle) -> (@Sendable (Data) throws -> Data)? { nil }
     func detectFields(in document: DocumentHandle, pages: [Int]) async throws -> [FormField] { [] }
     func add(_ fields: [FormField], to document: DocumentHandle) throws -> UndoGroup { formFields += fields; return noUndo("Add Fields") }
 

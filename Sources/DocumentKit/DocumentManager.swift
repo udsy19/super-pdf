@@ -78,7 +78,7 @@ public final class DocumentManager: DocumentManaging {
         document.fileURL = url
         document.fileType = PDFFileDocument.pdfType
         document.fileModificationDate = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
-        add(document, beside: nil)
+        add(document, beside: nil, bytes: loaded.bytes)
         if loaded.wasRepaired {
             // The repaired bytes live only in memory and the work folder until the person saves them.
             document.updateChangeCount(.changeDone)
@@ -101,7 +101,7 @@ public final class DocumentManager: DocumentManaging {
         document.fileURL = original
         document.fileType = PDFFileDocument.pdfType
         document.autosavedContentsFileURL = contents
-        add(document, beside: nil)
+        add(document, beside: nil, bytes: loaded.bytes)
         document.updateChangeCount(.changeReadOtherContents)
         return document
     }
@@ -109,14 +109,14 @@ public final class DocumentManager: DocumentManaging {
     @discardableResult
     public func openUntitled(_ data: Data, name: String) throws -> DocumentHandle {
         guard let pdf = PDFDocument(data: data) else { throw DocumentError.damaged(name) }
-        return openUntitled(pdf, name: name, beside: nil)
+        return openUntitled(pdf, name: name, beside: nil, bytes: data)
     }
 
-    private func openUntitled(_ pdf: PDFDocument, name: String, beside source: DocumentHandle?) -> DocumentHandle {
+    private func openUntitled(_ pdf: PDFDocument, name: String, beside source: DocumentHandle?, bytes: Data?) -> DocumentHandle {
         let handle = DocumentHandle(url: nil, displayName: name, pdf: pdf, state: PDFFileDocument.state(for: pdf, origin: .createdHere, repaired: false))
         let document = PDFFileDocument(handle: handle, manager: self)
         document.fileType = PDFFileDocument.pdfType
-        add(document, beside: source)
+        add(document, beside: source, bytes: bytes)
         // Unsaved until ⌘S: closing asks, autosave keeps it.
         document.updateChangeCount(.changeDone)
         return handle
@@ -130,10 +130,12 @@ public final class DocumentManager: DocumentManaging {
         let result = try await convert.convert(ConversionJob(inputs: [url], output: .pdf, destination: folder.appendingPathComponent(base + ".pdf")),
                                                progress: .ignored)
         guard let output = result.outputs.first, let pdf = PDFDocument(url: output) else { throw DocumentError.damaged(url.lastPathComponent) }
-        return openUntitled(pdf, name: base, beside: nil)
+        return openUntitled(pdf, name: base, beside: nil, bytes: try? Data(contentsOf: output))
     }
 
-    private func add(_ document: PDFFileDocument, beside source: DocumentHandle?) {
+    /// Adds and shows a document; `bytes` (what its PDFKit document was read from) become its authoritative contents once
+    /// the modules have seen it open (MarkupKit hides reply icons then, which is not a change to save).
+    private func add(_ document: PDFFileDocument, beside source: DocumentHandle?, bytes: Data?) {
         controller.addDocument(document)
         if displaysWindows {
             document.makeWindowControllers()
@@ -143,6 +145,7 @@ public final class DocumentManager: DocumentManaging {
             document.showWindows()
         }
         eventSubject.send(.opened(document.handle.id))
+        if let bytes { DocumentBaseline.attach(bytes, to: document.handle) }
     }
 
     private func show(_ document: PDFFileDocument) {
@@ -241,7 +244,7 @@ public final class DocumentManager: DocumentManaging {
 
         case .newDocument(let data, let name, let banner):
             guard let pdf = PDFDocument(data: data) else { throw DocumentError.damaged(name) }
-            let handle = openUntitled(pdf, name: name, beside: request.document)
+            let handle = openUntitled(pdf, name: name, beside: request.document, bytes: data)
             if let banner { Services.viewer?.showBanner(banner, in: handle) }
 
         case .none:
@@ -298,11 +301,12 @@ public final class DocumentManager: DocumentManaging {
     private func swapContents(of handle: DocumentHandle, to data: Data) {
         guard let pdf = PDFDocument(data: data) else { return }
         if pdf.isLocked, let password = handle.password { pdf.unlock(withPassword: password) }
-        replaceContents(of: handle, with: pdf)
+        replaceContents(of: handle, with: pdf, bytes: data)
     }
 
-    /// Shows new contents in place of the old (undo of an engine edit, Revert To), keeping the page and zoom.
-    func replaceContents(of handle: DocumentHandle, with pdf: PDFDocument) {
+    /// Shows new contents in place of the old (undo of an engine edit, Revert To), keeping the page and zoom; `bytes`
+    /// (what `pdf` was read from) become the authoritative contents.
+    func replaceContents(of handle: DocumentHandle, with pdf: PDFDocument, bytes: Data?) {
         let view = Services.viewer?.pdfView(for: handle)
         let pageIndex = view?.currentPage.map { handle.pdf.index(for: $0) }
         let scale = view?.scaleFactor, autoScales = view?.autoScales ?? true
@@ -316,6 +320,7 @@ public final class DocumentManager: DocumentManaging {
             if !autoScales, let scale { view.scaleFactor = scale }
         }
         eventSubject.send(.changed(handle.id))
+        if let bytes { DocumentBaseline.attach(bytes, to: handle) } else { handle.contents = nil }
     }
 
     // MARK: Recents and view state

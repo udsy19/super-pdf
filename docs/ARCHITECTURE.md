@@ -167,7 +167,20 @@ What `SuperPDFCore` actually declares, where it differs from or adds to the tabl
   parts and page extracts use ux §5.3/§3's en-dash form ("Report – part 1.pdf"). `DocumentHandle.undoManager` is weak
   (NSDocument owns it).
 - **Engines see bytes, not PDFKit.** `DocumentHandle.snapshot()` gives a `PDFSource` (file + password when unedited,
-  else PDFKit's data); every engine-facing method takes `PDFSource`.
+  else the document's contents with its PDFKit changes written in, as a save writes them); every engine-facing method
+  takes `PDFSource`.
+- **Saves keep structure.** PDFKit redraws every page when it writes and drops what it doesn't model (structure tree,
+  optional content, transitions, named destinations, JavaScript, annotation names and reply links, form scripts, app
+  keys and marked content). So a document's authoritative bytes are what it was read from, or what the last engine edit
+  (`.contents` result, and its undo) made: `DocumentHandle.contents`, DocumentKit's `DocumentBaseline`, which also
+  records what PDFKit showed for them (pages, rotation and boxes, annotation fingerprints, outline, attributes). A save
+  or snapshot writes only the PDFKit-level differences into those bytes with QPDF (`StructureMerge`): page order,
+  rotation, boxes, inserted and removed pages, annotations added, changed (PDFKit's keys merged over the file's
+  dictionary, unknown keys kept) and removed, form values, the outline, the attributes. It appends an incremental update
+  when it can (unencrypted, not rebuilt, no page removed) and rewrites the file with QPDF otherwise; PDFKit writes the
+  whole file only when its document can't be paired with the bytes, and the log says why. MarkupKit's
+  `annotationRestorer` puts back the data PDFKit can't hold into the annotations a save took from PDFKit (new or
+  changed ones); FormsKit needs no restorer.
 - **Catalog.** 52 tiles (ux §4.1's rows; its old "54" was a miscount before the AI tiles went). Each tile has an
   `owner` module and `needsDocument`. Owners where no work package named the feature: Contents and Read aloud →
   ViewerKit, Compare files → FixKit. Read aloud sits in Fix & check next to Check accessibility (the Understand section

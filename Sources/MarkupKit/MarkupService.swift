@@ -245,7 +245,7 @@ public final class MarkupService: Annotating {
 
     // MARK: Saving
 
-    public func annotationRestorer(for document: DocumentHandle) -> (@Sendable (Data) throws -> Data)? {
+    public func annotationRestorer(for document: DocumentHandle) -> AnnotationRestorer? {
         ledgers[document.id]?.restorer(for: document)
     }
 }

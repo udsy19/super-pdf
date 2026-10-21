@@ -7,8 +7,9 @@ import UniformTypeIdentifiers
 /// Preview's close question, undo through the document's undo manager. The `DocumentHandle` is what other modules see.
 ///
 /// The original is never written before the first choice: until then autosave keeps the changes in an autosave file
-/// elsewhere, and closing asks. Writes happen off the main thread from a private copy of the PDFKit document, into a
-/// temporary file that is checked by reading it back before NSDocument swaps it into place.
+/// elsewhere, and closing asks. Writes keep the document's structure: the changes made through PDFKit go into the
+/// file's own bytes (`DocumentBaseline`), off the main thread, into a temporary file that is checked by reading it back
+/// before NSDocument swaps it into place.
 @objc(SuperPDFDocument)
 public final class PDFFileDocument: NSDocument, MenuCommandResponding {
     static let pdfType = UTType.pdf.identifier
@@ -84,10 +85,13 @@ public final class PDFFileDocument: NSDocument, MenuCommandResponding {
                 guard let password = handle?.password ?? manager?.knownPassword(for: fileURL ?? url),
                       pdf.unlock(withPassword: password) else { throw CocoaError(.userCancelled) }
             }
+            let bytes = try? Data(contentsOf: url, options: .mappedIfSafe)
             if let handle {
-                manager?.replaceContents(of: handle, with: pdf)   // Revert To
+                manager?.replaceContents(of: handle, with: pdf, bytes: bytes)   // Revert To
             } else {
-                attach(DocumentHandle(url: fileURL ?? url, pdf: pdf, state: Self.state(for: pdf, origin: .opened, repaired: false)))
+                let handle = DocumentHandle(url: fileURL ?? url, pdf: pdf, state: Self.state(for: pdf, origin: .opened, repaired: false))
+                attach(handle)
+                if let bytes { DocumentBaseline.attach(bytes, to: handle) }
                 manager = DocumentManager.current
             }
         }
@@ -301,27 +305,21 @@ public final class PDFFileDocument: NSDocument, MenuCommandResponding {
 /// A `contextInfo` pointer carried across the close question (NSDocument hands it back unchanged).
 private struct UncheckedPointer: @unchecked Sendable { var pointer: UnsafeMutableRawPointer? }
 
-/// What a save writes, captured on the main thread: a private copy of the PDFKit document (cheap, and independent of
-/// later edits), or — when nothing changed since it was read — the file itself, copied byte for byte (a clone on APFS)
-/// so signatures and incremental updates survive.
+/// What a save writes, captured on the main thread: the save job (the document's authoritative bytes with what changed
+/// through PDFKit, `DocumentBaseline`), or — when nothing changed since it was read — the file itself, copied byte for
+/// byte (a clone on APFS).
 struct PendingWrite: @unchecked Sendable {
-    let pdf: PDFDocument
     let unchangedFile: URL?
+    let job: SaveJob
     let password: String?
     let pageCount: Int
-    /// Put back what PDFKit drops when it writes: annotation data (MarkupKit: names, reply links, attached files) and
-    /// form data (FormsKit: field scripts, calculation order).
-    let restoreAnnotations: (@Sendable (Data) throws -> Data)?
-    let restoreForms: (@Sendable (Data) throws -> Data)?
 
     @MainActor
     init(handle: DocumentHandle, isEdited: Bool, file: URL?) {
-        pdf = handle.pdf.copy() as! PDFDocument
         unchangedFile = !isEdited && !handle.state.wasRepaired ? file : nil
         password = handle.password
         pageCount = handle.pdf.pageCount
-        restoreAnnotations = unchangedFile == nil ? Services.markup?.annotationRestorer(for: handle) : nil
-        restoreForms = unchangedFile == nil ? Services.forms?.formRestorer(for: handle) : nil
+        job = SaveJob(handle, baseline: handle.contents as? DocumentBaseline)
     }
 
     /// Writes to `url` (NSDocument's temporary file for safe saves) and reads it back before NSDocument replaces
@@ -331,12 +329,7 @@ struct PendingWrite: @unchecked Sendable {
             guard unchangedFile.standardizedFileURL != url.standardizedFileURL else { return }
             try FileManager.default.copyItem(at: unchangedFile, to: url)   // fails rather than replace anything
         } else {
-            guard pdf.write(to: url) else { throw DocumentError.writeCheckFailed }
-            // A restore that fails leaves the file as it was before it: the save still happens.
-            for restore in [restoreAnnotations, restoreForms].compactMap({ $0 }) {
-                guard let written = try? Data(contentsOf: url), let restored = try? restore(written) else { continue }
-                try restored.write(to: url)
-            }
+            try job.run().data.write(to: url)
         }
         guard let check = PDFDocument(url: url) else { throw DocumentError.writeCheckFailed }
         if check.isLocked, !(password.map(check.unlock(withPassword:)) ?? false) { throw DocumentError.writeCheckFailed }

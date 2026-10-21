@@ -127,13 +127,30 @@ public protocol Annotating: CommentsReviewing, Measuring {
     func perform(_ command: MenuCommand, in document: DocumentHandle) -> Bool
     /// Whether `perform` would act on `command` now (its menu item's enabled state); nil when it isn't a markup command.
     func validate(_ command: MenuCommand, in document: DocumentHandle) -> Bool?
-    /// PDFKit drops some annotation data whenever it writes a file: names (/NM), reply and review-status links (/IRT),
-    /// the files of paper-clip notes and the sound of voice notes (features #77, #79). MarkupKit keeps them while the
-    /// document is open; DocumentKit asks for this function on the main actor when a save starts and runs it, off the
-    /// main actor, on the bytes PDFKit wrote. Nil when there is nothing to put back.
-    func annotationRestorer(for document: DocumentHandle) -> (@Sendable (Data) throws -> Data)?
+    /// PDFKit cannot hold some annotation data: names (/NM), reply and review-status links (/IRT), the files of
+    /// paper-clip notes and the sound of voice notes (features #77, #79). Annotations the file already had keep theirs
+    /// through a save (DocumentKit writes PDFKit's changes into the file's own objects); MarkupKit keeps them for the
+    /// annotations it made or changed. DocumentKit asks for the restorer on the main actor when a save starts and runs
+    /// it off the main actor. Nil when there is nothing to put back.
+    func annotationRestorer(for document: DocumentHandle) -> AnnotationRestorer?
     /// Clips a file (or a recorded voice note) to a page as a paper-clip annotation (features #79).
     func attachFile(_ file: URL, to page: Int, at point: CGPoint, in document: DocumentHandle) throws -> UndoGroup
     /// A stamp annotation with an appearance stream (EditKit's stamps tool and image drops in Markup mode).
     func addStamp(_ image: Data, on page: Int, in rect: CGRect, in document: DocumentHandle) throws -> UndoGroup
+}
+
+/// Puts back annotation data PDFKit cannot hold into the objects a save writes (`Annotating.annotationRestorer`).
+public struct AnnotationRestorer: Sendable {
+    /// The annotation key, without its slash, whose text value names an annotation while the document is open. PDFKit
+    /// keeps direct values of unknown keys, so the name survives PDFKit; saves remove the key from what they write.
+    public var idKey: String
+    /// Runs off the main actor on the document being written. `model` is PDFModelKit's `PDFModel` (Core does not import
+    /// engines); `annotations` maps every named annotation to its `PDFObject` in that model; `written` names those whose
+    /// dictionary came from PDFKit in this save (new or changed ones), the only ones to put data back into.
+    public var restore: @Sendable (_ model: AnyObject, _ annotations: [String: AnyObject], _ written: Set<String>) throws -> Void
+
+    public init(idKey: String, restore: @escaping @Sendable (_ model: AnyObject, _ annotations: [String: AnyObject], _ written: Set<String>) throws -> Void) {
+        self.idKey = idKey
+        self.restore = restore
+    }
 }

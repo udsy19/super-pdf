@@ -6,8 +6,9 @@ import SuperPDFCore
 // What PDFKit loses (measured: a PDFKit read and write of a QPDF-made file): /NM names, /IRT reply and review-status
 // links, a paper clip's file (/FS → /EF) and its /Name icon, a voice note's /Sound. PDFKit keeps unknown keys with
 // direct values, so each annotation carries MarkupKit's id (`/SuperPDFID`) while the document is open, and this ledger
-// keeps the rest by id. The restorer puts it all back into the bytes PDFKit wrote (on save and for engine snapshots),
-// writes the id as /NM and drops the private key, so saved files are plain standard PDF.
+// keeps the rest by id. Saves keep the file's own annotation objects (DocumentKit writes PDFKit's changes into them), so
+// the restorer only puts the data back into the annotations whose dictionaries a save took from PDFKit (new or changed
+// ones), writes the id as /NM and drops the private key, so saved files are plain standard PDF.
 
 /// A file clipped to a page (features #79).
 struct AttachedFile: Hashable, Sendable {
@@ -140,45 +141,37 @@ final class AnnotationLedger {
 
     // MARK: Putting it back
 
-    /// The function DocumentKit runs on bytes PDFKit wrote; nil when no annotation carries an id.
-    func restorer(for document: DocumentHandle) -> (@Sendable (Data) throws -> Data)? {
+    /// What DocumentKit runs on the document it writes; nil when no annotation carries an id.
+    func restorer(for document: DocumentHandle) -> AnnotationRestorer? {
         let hasMarkup = (0..<document.pageCount).contains { index in
             document.pdf.page(at: index)?.annotations.contains { $0.value(forAnnotationKey: .superPDFID) != nil } ?? false
         }
         guard hasMarkup else { return nil }
-        let records = records, password = document.password
-        return { data in try Self.restore(data, records: records, password: password) }
+        let records = records
+        return AnnotationRestorer(idKey: "SuperPDFID") { model, annotations, written in
+            guard let model = model as? PDFModel else { return }
+            Self.restore(in: model, annotations: annotations.compactMapValues { $0 as? PDFObject }, written: written, records: records)
+        }
     }
 
-    nonisolated static func restore(_ data: Data, records: [String: LedgerRecord], password: String?) throws -> Data {
-        let model = try PDFModel(data: data, password: password)
-        var byID: [String: PDFObject] = [:]
-        var popups: [PDFObject] = []
-        for page in model.pages {
-            for annotation in page.annotations {
-                if annotation["Subtype"]?.name == "Popup" { popups.append(annotation) }
-                if let id = annotation["SuperPDFID"]?.text, byID[id] == nil { byID[id] = annotation }
-            }
-        }
-        guard !byID.isEmpty else { return data }
-        // PDFKit gives each popup a copy of its note as /Parent; point it at the note itself (the copy then goes).
-        for popup in popups {
-            if let id = popup["Parent"]?["SuperPDFID"]?.text, let note = byID[id]?.reference { popup.set("Parent", note) }
-        }
-        for (id, annotation) in byID {
+    /// Writes each written annotation's id as /NM and puts back its reply link, flags, icon, file and sound. Links point
+    /// at the annotations' objects in `model`, whether a save wrote them or kept them from the file.
+    nonisolated static func restore(in model: PDFModel, annotations: [String: PDFObject], written: Set<String>, records: [String: LedgerRecord]) {
+        for id in written {
+            guard let annotation = annotations[id] else { continue }
             annotation.remove("SuperPDFID")
-            annotation.set("NM", .text(id))
+            if annotation["NM"] == nil { annotation.set("NM", .text(id)) }
             guard let record = records[id] else { continue }
-            if let parent = record.parent, let target = byID[parent]?.reference {
+            if let parent = record.parent, let target = annotations[parent]?.reference {
                 annotation.set("IRT", target)
                 annotation.set("RT", .name(record.replyType ?? "R"))
             }
             if let flags = record.flags { annotation.set("F", .integer(flags)) }
             if let icon = record.icon { annotation.set("Name", .name(icon)) }
-            if let file = record.file { annotation.set("FS", fileSpecification(file, in: model)) }
-            if let sound = record.sound { annotation.set("Sound", soundStream(sound, in: model)) }
+            // A changed annotation keeps the file's own file and sound objects.
+            if let file = record.file, annotation["FS"] == nil { annotation.set("FS", fileSpecification(file, in: model)) }
+            if let sound = record.sound, annotation["Sound"] == nil { annotation.set("Sound", soundStream(sound, in: model)) }
         }
-        return try model.data()
     }
 
     private nonisolated static func fileSpecification(_ file: AttachedFile, in model: PDFModel) -> PDFObject {

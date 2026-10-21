@@ -1,5 +1,6 @@
 import AVFoundation
 import AppKit
+import DocumentKit
 @testable import MarkupKit
 import PDFKit
 import PDFModelKit
@@ -55,7 +56,7 @@ private func markupDocument(_ name: String, pages: Int = 2) -> DocumentHandle {
     context.closePDF()
     let url = markupFolder.appendingPathComponent(name + ".pdf")
     try? (data as Data).write(to: url)
-    return DocumentHandle(url: url, pdf: PDFDocument(url: url)!, undoManager: makeUndoManager())
+    return openedHandle(url)
 }
 
 /// MarkupKit's real service over the fakes, as the app installs it.
@@ -68,16 +69,14 @@ private func markupService() -> MarkupService {
     return Services.markup as! MarkupService
 }
 
-/// Saves as DocumentKit does: a copy written by PDFKit, then the restorer over the written bytes; reopens it.
+/// Saves as DocumentKit does: PDFKit's changes written into the file's own bytes, with the restorer over the
+/// annotations PDFKit wrote.
 @MainActor
 private func markupSave(_ document: DocumentHandle, as name: String) -> URL {
     let url = markupFolder.appendingPathComponent(name + ".pdf")
-    let restore = Services.markup.annotationRestorer(for: document)
-    let copy = document.pdf.copy() as! PDFDocument
-    check(copy.write(to: url), "PDFKit writes \(name)")
-    if let restore, let written = try? Data(contentsOf: url) {
-        do { try restore(written).write(to: url) } catch { check(false, "restorer runs: \(error)") }
-    }
+    let outcome = DocumentBaseline.saveOutcome(of: document)
+    check(outcome.method == .appended || outcome.method == .unchanged, "\(name): the changes are appended to the file: \(outcome.method) \(outcome.notes)")
+    check((try? outcome.data.write(to: url)) != nil, "writes \(name)")
     return url
 }
 
@@ -238,7 +237,7 @@ private func markupRoundTrip() {
     }
 
     // PDFKit reads the same markup back.
-    let reopened = DocumentHandle(url: url, pdf: PDFDocument(url: url)!, undoManager: makeUndoManager())
+    let reopened = openedHandle(url)
     let types = reopened.pdf.page(at: 0)!.annotations.compactMap(\.type).filter { $0 != "Popup" }.sorted()
     let madeTypes = document.pdf.page(at: 0)!.annotations.compactMap(\.type).filter { $0 != "Popup" }.sorted()
     check(types == madeTypes, "PDFKit reopens the same kinds: \(types) vs \(madeTypes)")
@@ -300,7 +299,7 @@ private func markupForeignFile() {
     let url = markupFolder.appendingPathComponent("Foreign.pdf")
     try! model.write(to: url)
 
-    let document = DocumentHandle(url: url, pdf: PDFDocument(url: url)!, undoManager: makeUndoManager())
+    let document = openedHandle(url)
     let comments = service.comments(in: document)
     let thread = comments.first { $0.id == "acrobat-1" }
     check(thread?.replies.map(\.text) == ["Shrink it"] && thread?.replies.first?.author == "Cal" && thread?.status == .completed, "an Acrobat thread reads as one comment")
@@ -348,7 +347,7 @@ private func markupUndo() {
     // A star from the file (drawn from its appearance) becomes redrawable before it moves.
     let star = session.finishShape(.star, from: CGPoint(x: 300, y: 300), to: CGPoint(x: 360, y: 360), on: page)
     let url = markupSave(document, as: "Undo (saved)")
-    let reopened = DocumentHandle(url: url, pdf: PDFDocument(url: url)!, undoManager: makeUndoManager())
+    let reopened = openedHandle(url)
     let reopenedSession = service.session(for: reopened)
     let reopenedPage = reopened.pdf.page(at: 0)!
     let plainStar = reopenedPage.annotations.first { $0.type == "Polygon" }!
@@ -436,7 +435,7 @@ private func markupMeasure() {
     document.undoManager?.redo()
     _ = (area, perimeter)
     let url = markupSave(document, as: "Measure (saved)")
-    let reopened = DocumentHandle(url: url, pdf: PDFDocument(url: url)!, undoManager: makeUndoManager())
+    let reopened = openedHandle(url)
     let scale = service.scale(in: reopened, page: 0)
     check(scale.unit == .m && abs(scale.length(144) - 20) < 0.001, "the scale reads back from /Measure (\(scale))")
     check(Measure.format(12.345, unit: .m, area: false) == Measure.format(12.3, unit: .m, area: false) && Measure.format(2, unit: .ft, area: true) == "2 sq ft",

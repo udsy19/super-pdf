@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import ConvertKit
+import DocumentKit
 @testable import FormsKit
 import LayoutKit
 import PDFKit
@@ -375,18 +376,19 @@ private func formsTypedOnPage() {
 private func formsSaveReopen() {
     let (_, service, _) = installForms()
     let folder = formsFolder("save")
-    let document = formDocument(folder)
+    let fixture = folder.appendingPathComponent("Form.pdf")
+    try? formFixture().write(to: fixture)
+    let document = openedHandle(fixture, state: DocumentState(hasFormFields: true))
     _ = service.setValue("Ada Lovelace", forField: "name", in: document)
     _ = service.setValue("Zürich", forField: "address.city", in: document)
     _ = service.setValue("12", forField: "price", in: document)
     _ = service.setValue("2", forField: "qty", in: document)
     _ = service.setValue("Yes", forField: "agree", in: document)
     _ = service.setValue("Blue", forField: "colour", in: document)
-    // DocumentKit's save: PDFKit writes, then FormsKit puts back what PDFKit dropped.
-    guard let written = document.pdf.dataRepresentation() else { check(false, "PDFKit writes"); return }
-    let pdfKitAlone = (try? FormFile.facts(of: written, password: nil)) ?? FormFacts()
-    check(pdfKitAlone.scripts.isEmpty, "PDFKit alone drops the scripts (why the restorer exists)")
-    guard let restore = service.formRestorer(for: document), let saved = try? restore(written) else { check(false, "restorer runs"); return }
+    // DocumentKit's save: the values PDFKit holds go into the file's own fields; their scripts were never taken out.
+    let outcome = DocumentBaseline.saveOutcome(of: document)
+    check(outcome.method == .appended, "the values are appended to the file: \(outcome.method) \(outcome.notes)")
+    let saved = outcome.data
     let url = folder.appendingPathComponent("Saved.pdf")
     try? saved.write(to: url)
 
@@ -400,14 +402,14 @@ private func formsSaveReopen() {
     let facts = (try? FormFile.facts(of: saved, password: nil)) ?? FormFacts()
     check(facts.scripts["price"]?[.format] == money && facts.scripts["total"]?[.calculate]?.contains("SUM") == true, "scripts are back")
     check(facts.calculationOrder == ["subtotal", "tax", "total"], "the calculation order is back: \(facts.calculationOrder)")
-    check(model.acroForm?["DR"]?["Font"]?["Helv"] != nil && model.acroForm?["DA"] != nil, "the form's appearance defaults are back")
+    let original = try? PDFModel(data: formFixture())
+    check(model.acroForm?["DA"]?.value == original?.acroForm?["DA"]?.value && model.acroForm?["DR"]?.value == original?.acroForm?["DR"]?.value,
+          "the form's appearance defaults are the file's")
 
     // Re-opened, the form calculates as before.
     let reopened = DocumentHandle(url: url, pdf: PDFDocument(url: url)!, undoManager: makeUndoManager())
     _ = service.setValue("3", forField: "qty", in: reopened)
     check(service.values(of: reopened)["total"] == "$39.60", "the re-opened form still calculates")
-    check(service.formRestorer(for: DocumentHandle(url: nil, displayName: "Plain", pdf: PDFDocument(data: makePDF(pages: 1))!)) == nil,
-          "nothing to restore on a plain PDF")
 }
 
 @MainActor

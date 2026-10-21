@@ -2,12 +2,24 @@ import AppKit
 import Combine
 import DocumentKit
 import PDFKit
+import PDFModelKit
 import SuperPDFCore
+import UniformTypeIdentifiers
 
 // DocumentKit's checks (WP3): naming collisions, the save-policy state machine, the password and repair flows, undo and
 // redo of page operations and engine edits, the save flow (autosave never touches the original before the first
 // choice; Save a copy / Replace), applying tool results, recents and view state. Every file lives in a fresh temporary
 // folder; no window, panel or alert is shown (a scripted prompter answers).
+
+/// A handle over a file as DocumentKit opens one: the file's bytes are its authoritative contents, so saves keep its
+/// structure (`DocumentBaseline`). Module tests that save use it.
+@MainActor
+func openedHandle(_ url: URL, state: DocumentState = DocumentState()) -> DocumentHandle {
+    let handle = DocumentHandle(url: url, pdf: PDFDocument(url: url)!, state: state, undoManager: makeUndoManager())
+    if let bytes = try? Data(contentsOf: url) { DocumentBaseline.attach(bytes, to: handle) }
+    return handle
+}
+
 func registerDocumentKitTests() {
     SelfTest.cases.append(("DocumentKit.naming", { documentKitNaming() }))
     SelfTest.cases.append(("DocumentKit.savePolicy", { documentKitSavePolicy() }))
@@ -17,6 +29,11 @@ func registerDocumentKitTests() {
     SelfTest.cases.append(("DocumentKit.saveFlow", { documentKitSaveFlow() }))
     SelfTest.cases.append(("DocumentKit.applyResults", { documentKitApplyResults() }))
     SelfTest.cases.append(("DocumentKit.recentsAndViewState", { documentKitRecentsAndViewState() }))
+    SelfTest.cases.append(("DocumentKit.saveFidelity", { documentKitSaveFidelity() }))
+    SelfTest.cases.append(("DocumentKit.saveFidelityPagesRemoved", { documentKitSaveFidelityPagesRemoved() }))
+    SelfTest.cases.append(("DocumentKit.saveFidelityEngineEdit", { documentKitSaveFidelityEngineEdit() }))
+    SelfTest.cases.append(("DocumentKit.saveFidelityEncrypted", { documentKitSaveFidelityEncrypted() }))
+    SelfTest.cases.append(("DocumentKit.saveFidelityPageInserted", { documentKitSaveFidelityPageInserted() }))
 }
 
 // MARK: - Fixtures
@@ -456,4 +473,309 @@ private func documentKitRecentsAndViewState() {
     try? FileManager.default.removeItem(at: a)
     check(manager.recentDocuments.isEmpty, "files that are gone drop out")
     Defaults.store.removeObject(forKey: "documentKit.recents")
+}
+
+// MARK: - Save fidelity
+
+private let fidelityAttachment = Data("name,amount\nAda,42\n".utf8)
+
+/// Three pages carrying what PDFKit drops when it writes: a structure tree with tagged content (and a tagged link),
+/// optional content, a page transition, named destinations, document and page JavaScript, XMP, an attached file and a
+/// paper-clip note, a reply thread, a form field with a format script and calculation order, an app-private catalog
+/// key and EditKit's marked header.
+private func fidelityFixture() -> Data {
+    let model = try! PDFModel(data: makePDF(pages: 3))
+    let root = model.root
+    let pages = model.pages
+    let first = pages[0], second = pages[1]
+    model.addEmbeddedFile(fidelityAttachment, name: "data.csv", mimeType: "text/csv")
+    model.setInfo("Title", "Fidelity")
+
+    // Tagged, layered content and EditKit's marked header on page 1.
+    let layer = model.makeIndirect(.dictionary(["Type": .name("OCG"), "Name": .text("Layer A")]))
+    first.ownResources().dictionary("Properties").set("oc1", layer)
+    first.addContent(Data("""
+    /P <</MCID 0>> BDC 0 g 72 600 50 10 re f EMC
+    /Artifact <</Type /Pagination /Subtype /Header /SPKind (header)>> BDC 0 g 72 760 80 8 re f EMC
+    /OC /oc1 BDC 0 0 1 rg 72 500 100 20 re f EMC
+    """.utf8))
+    root.set("OCProperties", .dictionary(["OCGs": .array([layer.reference!]),
+                                          "D": .dictionary(["ON": .array([layer.reference!]), "Order": .array([layer.reference!])])]))
+    root.set(privateCatalogKey, .name("Rfixture"))
+
+    // Annotations: a tagged link to a named destination, a note with its popup and a reply, a paper clip, a field.
+    let link = model.makeIndirect(.dictionary(["Type": .name("Annot"), "Subtype": .name("Link"), "Rect": .rect(CGRect(x: 72, y: 400, width: 120, height: 14)),
+                                                "Dest": .ascii("chapter2"), "StructParent": .integer(1), "Border": .array([.integer(0), .integer(0), .integer(0)])]))
+    let note = model.makeIndirect(.dictionary(["Type": .name("Annot"), "Subtype": .name("Text"), "Rect": .rect(CGRect(x: 300, y: 700, width: 20, height: 20)),
+                                                "Contents": .text("Parent note"), "NM": .text("parent"), "T": .text("Ada"), "Custom": .text("keep me")]))
+    let popup = model.makeIndirect(.dictionary(["Type": .name("Annot"), "Subtype": .name("Popup"), "Rect": .rect(CGRect(x: 330, y: 600, width: 180, height: 100)),
+                                                 "Parent": note.reference!]))
+    note.set("Popup", popup)
+    let reply = model.makeIndirect(.dictionary(["Type": .name("Annot"), "Subtype": .name("Text"), "Rect": .rect(CGRect(x: 300, y: 670, width: 20, height: 20)),
+                                                 "Contents": .text("A reply"), "NM": .text("reply"), "T": .text("Grace"), "IRT": note.reference!,
+                                                 "RT": .name("R")]))
+    let fileStream = model.makeStream(["Type": .name("EmbeddedFile")], data: Data("Minutes".utf8))
+    let clip = model.makeIndirect(.dictionary(["Type": .name("Annot"), "Subtype": .name("FileAttachment"), "Rect": .rect(CGRect(x: 500, y: 700, width: 14, height: 20)),
+                                                "Name": .name("Paperclip"), "NM": .text("clip"),
+                                                "FS": .dictionary(["Type": .name("Filespec"), "F": .text("minutes.txt"), "UF": .text("minutes.txt"),
+                                                                   "EF": .dictionary(["F": fileStream.reference!])])]))
+    let field = model.makeIndirect(.dictionary(["Type": .name("Annot"), "Subtype": .name("Widget"), "FT": .name("Tx"), "T": .text("amount"),
+                                                 "Rect": .rect(CGRect(x: 72, y: 300, width: 200, height: 20)), "V": .text("7"), "F": .integer(4),
+                                                 "DA": .ascii("/Helv 12 Tf 0 g"),
+                                                 "AA": .dictionary(["F": .dictionary(["S": .name("JavaScript"), "JS": .text("AFNumber_Format(2, 0, 0, 0, \"$\", true);")])])]))
+    for annotation in [link, note, popup, reply, clip, field] { first.addAnnotation(annotation) }
+    let helvetica = model.makeIndirect(.dictionary(["Type": .name("Font"), "Subtype": .name("Type1"), "BaseFont": .name("Helvetica")]))
+    root.set("AcroForm", .dictionary(["Fields": .array([field.reference!]), "CO": .array([field.reference!]), "DA": .ascii("/Helv 0 Tf 0 g"),
+                                      "DR": .dictionary(["Font": .dictionary(["Helv": helvetica.reference!])])]))
+
+    // The structure tree: a paragraph (marked content 0 on page 1) and the link (object reference).
+    first.object.set("StructParents", .integer(0))
+    let structRoot = model.makeIndirect(.dictionary(["Type": .name("StructTreeRoot")]))
+    let documentElement = model.makeIndirect(.dictionary(["Type": .name("StructElem"), "S": .name("Document"), "P": structRoot.reference!]))
+    let paragraph = model.makeIndirect(.dictionary(["Type": .name("StructElem"), "S": .name("P"), "P": documentElement.reference!,
+                                                     "Pg": first.object.reference!, "K": .integer(0), "Alt": .text("Tagged paragraph")]))
+    let linkElement = model.makeIndirect(.dictionary(["Type": .name("StructElem"), "S": .name("Link"), "P": documentElement.reference!,
+                                                       "K": .dictionary(["Type": .name("OBJR"), "Obj": link.reference!, "Pg": first.object.reference!])]))
+    documentElement.set("K", .array([paragraph.reference!, linkElement.reference!]))
+    structRoot.set("K", documentElement)
+    structRoot.set("ParentTree", .dictionary(["Nums": .array([.integer(0), .array([paragraph.reference!]), .integer(1), linkElement.reference!])]))
+    structRoot.set("ParentTreeNextKey", .integer(2))
+    root.set("StructTreeRoot", structRoot)
+    root.set("MarkInfo", .dictionary(["Marked": .bool(true)]))
+    root.set("Lang", .text("en-GB"))
+
+    // A transition and page script on page 2, named destinations and document scripts.
+    second.object.set("Trans", .dictionary(["Type": .name("Trans"), "S": .name("Dissolve"), "D": .real(1.5)]))
+    second.object.set("Dur", .integer(4))
+    second.object.set("AA", .dictionary(["O": .dictionary(["S": .name("JavaScript"), "JS": .text("console.println('page two');")])]))
+    let names = root.dictionary("Names")
+    names.set("Dests", PDFNameTree.make(in: model, entries: [(Data("chapter2".utf8), model.makeIndirect(.array([second.object.reference!, .name("Fit")])))]))
+    let script = model.makeIndirect(.dictionary(["S": .name("JavaScript"), "JS": .text("var fixture = true;")]))
+    names.set("JavaScript", PDFNameTree.make(in: model, entries: [(Data("init".utf8), script)]))
+    root.set("OpenAction", .dictionary(["S": .name("JavaScript"), "JS": .text("app.alert('opened');")]))
+
+    let xmp = "<?xpacket begin=\"\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?><x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">"
+        + "<rdf:Description rdf:about=\"\" xmlns:superpdf=\"https://superpdf.app/ns/\"><superpdf:fixture>kept</superpdf:fixture></rdf:Description>"
+        + "</rdf:RDF></x:xmpmeta><?xpacket end=\"w\"?>"
+    root.set("Metadata", model.makeStream(["Type": .name("Metadata"), "Subtype": .name("XML")], data: Data(xmp.utf8)))
+    return try! model.data(options: PDFWriteOptions(objectStreams: .disable))
+}
+
+/// A catalog key only the app reads (EditKit named its saves' revisions there).
+private let privateCatalogKey = "SPRevision"
+
+/// Every structure of `fidelityFixture()` is in `data`; `firstPage` is where the fixture's first page is now.
+@MainActor
+private func checkFidelityStructures(_ data: Data, firstPage: Int, secondPage: Int?, _ label: String) {
+    guard let model = try? PDFModel(data: data) else { return check(false, "\(label): QPDF opens the save") }
+    let root = model.root
+    check(model.check().isEmpty, "\(label): QPDF finds nothing wrong: \(model.check())")
+    check(root["MarkInfo"]?["Marked"]?.bool == true && root["Lang"]?.text == "en-GB", "\(label): marked, with its language")
+    let tree = root["StructTreeRoot"]
+    let elements = tree?["K"]?["K"]?.items ?? []
+    check(elements.count == 2 && elements[0]["Alt"]?.text == "Tagged paragraph" && elements[1]["K"]?["Obj"]?["Subtype"]?.name == "Link",
+          "\(label): the structure tree and its tags")
+    check(tree?["ParentTree"]?["Nums"]?.count == 4, "\(label): the parent tree")
+    guard let page = model.page(at: firstPage) else { return check(false, "\(label): the first page is there") }
+    check(elements.first?["Pg"].map { $0.isSameObject(as: page.object) } == true, "\(label): tags point at the page")
+    let content = (try? page.contentData()).map { String(decoding: $0, as: UTF8.self) } ?? ""
+    check(content.contains("/P <</MCID 0>> BDC") && content.contains("/SPKind (header)") && content.contains("/OC /oc1 BDC"),
+          "\(label): tagged, marked and layered content is the file's")
+    check(page.object["StructParents"]?.int == 0, "\(label): the page keeps its structure key")
+    check(root["OCProperties"]?["OCGs"]?.items.map { $0["Name"]?.text } == ["Layer A"], "\(label): the layer")
+    check(root[privateCatalogKey]?.name != nil, "\(label): the app's catalog key")
+    if let secondPage {
+        let second = model.page(at: secondPage)
+        check(second?.object["Trans"]?["S"]?.name == "Dissolve" && second?.object["Dur"]?.int == 4, "\(label): the transition")
+        check(second?.object["AA"]?["O"]?["S"]?.name == "JavaScript", "\(label): the page script")
+        check(model.destination(from: model.make(.ascii("chapter2")))?.page == secondPage, "\(label): the named destination follows its page")
+    }
+    let scripts = root["Names"]?["JavaScript"].map { PDFNameTree.entries(of: $0) } ?? []
+    check(scripts.count == 1 && root["OpenAction"]?["S"]?.name == "JavaScript", "\(label): document scripts")
+    let xmp = (try? root["Metadata"]?.streamData()).map { String(decoding: $0!, as: UTF8.self) } ?? ""
+    check(xmp.contains("<superpdf:fixture>kept</superpdf:fixture>"), "\(label): the XMP")
+    check((try? model.embeddedFileData(named: "data.csv")) == fidelityAttachment, "\(label): the attached file")
+    let annotations = page.annotations
+    let link = annotations.first { $0["Subtype"]?.name == "Link" }
+    check(link?["Dest"]?.stringData == Data("chapter2".utf8) && link?["StructParent"]?.int == 1, "\(label): the tagged link to its named destination")
+    let note = annotations.first { $0["NM"]?.text == "parent" }
+    let reply = annotations.first { $0["NM"]?.text == "reply" }
+    check(note?["Custom"]?.text == "keep me" && note?["Popup"]?["Parent"].map { $0.isSameObject(as: note!) } == true, "\(label): the note keeps its keys and popup")
+    check(reply?["IRT"].map { $0.isSameObject(as: note!) } == true && reply?["RT"]?.name == "R", "\(label): the reply thread")
+    let clip = annotations.first { $0["Subtype"]?.name == "FileAttachment" }
+    check((try? clip?["FS"]?["EF"]?["F"]?.streamData()) == Data("Minutes".utf8) && clip?["Name"]?.name == "Paperclip", "\(label): the paper clip's file")
+    let form = model.formFields().first { $0.name == "amount" }
+    check(form?.object["AA"]?["F"]?["JS"]?.text?.hasPrefix("AFNumber_Format") == true, "\(label): the field's format script")
+    check(root["AcroForm"]?["CO"]?.items.first.map { $0.isSameObject(as: form!.object) } == true, "\(label): the calculation order")
+    check(model.info("Title") == "Fidelity", "\(label): the document information")
+    check(data.range(of: Data("SuperPDFSave".utf8)) == nil && data.range(of: Data("SuperPDFID".utf8)) == nil, "\(label): no private keys written")
+}
+
+/// Typical edits through PDFKit (a highlight, an edited note, a filled field, a rotated page, a page moved, a
+/// bookmark), saved through NSDocument: every structure of the file survives, the edits are there, and the save is an
+/// update appended to the file.
+@MainActor
+private func documentKitSaveFidelity() {
+    let folder = tempFolder("fidelity")
+    let manager = makeManager(folder, prompter: ScriptedPrompter())
+    let url = folder.appendingPathComponent("Fidelity.pdf")
+    let original = fidelityFixture()
+    try? original.write(to: url)
+    guard case .success(let handle)? = complete(300, { try await manager.open(url) }), let document = manager.document(for: handle) else {
+        return check(false, "opens")
+    }
+    check(handle.contents is DocumentBaseline, "the file's bytes are the document's contents")
+    check(DocumentBaseline.saveOutcome(of: handle).method == .unchanged, "nothing changed, nothing to write")
+
+    let pdf = handle.pdf
+    guard let first = pdf.page(at: 0), let second = pdf.page(at: 1), let third = pdf.page(at: 2) else { return check(false, "three pages") }
+    let highlight = PDFAnnotation(bounds: CGRect(x: 72, y: 598, width: 50, height: 14), forType: .highlight, withProperties: nil)
+    highlight.quadrilateralPoints = [NSValue(point: CGPoint(x: 0, y: 14)), NSValue(point: CGPoint(x: 50, y: 14)),
+                                     NSValue(point: .zero), NSValue(point: CGPoint(x: 50, y: 0))]
+    highlight.color = .systemYellow
+    first.addAnnotation(highlight)
+    first.annotations.first { $0.type == "Text" && $0.contents == "Parent note" }?.contents = "Parent note, edited"
+    first.annotations.first { $0.fieldName == "amount" }?.widgetStringValue = "42"
+    second.rotation = 90
+    pdf.removePage(at: 2)
+    pdf.insert(third, at: 0)
+    let outline = PDFOutline()
+    pdf.outlineRoot = outline
+    let bookmark = PDFOutline()
+    bookmark.label = "Chapter 2"
+    bookmark.destination = PDFKit.PDFDestination(page: second, at: CGPoint(x: 0, y: 792))
+    outline.insertChild(bookmark, at: 0)
+    document.updateChangeCount(.changeDone)
+
+    let outcome = DocumentBaseline.saveOutcome(of: handle)
+    check(outcome.method == .appended && outcome.notes.isEmpty, "the edits are appended to the file: \(outcome.method) \(outcome.notes)")
+    let saved = folder.appendingPathComponent("Fidelity (saved).pdf")
+    let started = Date()
+    let error: Error?? = complete(300, {
+        await withCheckedContinuation { c in document.save(to: saved, ofType: UTType.pdf.identifier, for: .saveToOperation) { c.resume(returning: $0) } }
+    }).flatMap { try? $0.get() }
+    check(error != nil && error! == nil, "NSDocument saves")
+    Log.documents.debug("fidelity save took \(Date().timeIntervalSince(started))")
+    guard let data = try? Data(contentsOf: saved) else { return check(false, "the save is on disk") }
+    check(data.count > original.count && data.prefix(original.count) == original, "the original bytes are untouched: the save appends")
+    checkFidelityStructures(data, firstPage: 1, secondPage: 2, "after edits")
+
+    // The edits.
+    guard let model = try? PDFModel(data: data), let base = try? PDFModel(data: original) else { return check(false, "QPDF opens both") }
+    check(model.pages.map(\.object.objectID) == [2, 0, 1].map { base.page(at: $0)?.object.objectID }, "the pages in their new order, as the file's own pages")
+    check(model.page(at: 2)?.rotation == 90, "the rotated page")
+    let annotations = model.page(at: 1)?.annotations ?? []
+    let marked = annotations.first { $0["Subtype"]?.name == "Highlight" }
+    check(marked?["QuadPoints"]?.count == 8 && marked?["P"].map { $0.isSameObject(as: model.page(at: 1)!.object) } == true, "the new highlight, on its page")
+    check(annotations.first { $0["NM"]?.text == "parent" }?["Contents"]?.text == "Parent note, edited", "the edited note")
+    check(model.formFields().first { $0.name == "amount" }?.value?.textValue == "42", "the filled field")
+    let bookmarks = model.outlines()
+    check(bookmarks.map(\.title) == ["Chapter 2"] && bookmarks.first?.destination?.page == 2, "the bookmark: \(bookmarks)")
+
+    // PDFKit reads it all back.
+    guard let reopened = PDFDocument(data: data) else { return check(false, "PDFKit opens the save") }
+    check(reopened.pageCount == 3 && reopened.page(at: 2)?.rotation == 90, "PDFKit: pages and rotation")
+    let page = reopened.page(at: 1)
+    check(page?.annotations.contains { $0.type == "Highlight" } == true, "PDFKit: the highlight")
+    check(page?.annotations.first { $0.fieldName == "amount" }?.widgetStringValue == "42", "PDFKit: the field value")
+    check(reopened.outlineRoot?.child(at: 0)?.label == "Chapter 2", "PDFKit: the bookmark")
+    closeAll(manager)
+}
+
+/// A removed page rewrites the file (nothing of the page lingers in an older revision); everything else stays.
+@MainActor
+private func documentKitSaveFidelityPagesRemoved() {
+    let folder = tempFolder("fidelity-removed")
+    let url = folder.appendingPathComponent("Fidelity.pdf")
+    try? fidelityFixture().write(to: url)
+    let handle = openedHandle(url)
+    handle.pdf.removePage(at: 2)
+    let outcome = DocumentBaseline.saveOutcome(of: handle)
+    check(outcome.method == .rewritten, "removing a page rewrites the file: \(outcome.method) \(outcome.notes)")
+    checkFidelityStructures(outcome.data, firstPage: 0, secondPage: 1, "a page removed")
+    check((try? PDFModel(data: outcome.data))?.pageCount == 2 && PDFDocument(data: outcome.data)?.pageCount == 2, "two pages left")
+}
+
+/// An engine's edit (new bytes, as EditKit's) becomes the contents; a PDFKit change on top keeps what the engine wrote.
+@MainActor
+private func documentKitSaveFidelityEngineEdit() {
+    let folder = tempFolder("fidelity-engine")
+    let manager = makeManager(folder, prompter: ScriptedPrompter())
+    let url = folder.appendingPathComponent("Fidelity.pdf")
+    let original = fidelityFixture()
+    try? original.write(to: url)
+    guard case .success(let handle)? = complete(300, { try await manager.open(url) }) else { return check(false, "opens") }
+    guard let model = try? PDFModel(data: original) else { return check(false, "QPDF opens the fixture") }
+    model.root.set(privateCatalogKey, .name("Rengine"))
+    model.page(at: 1)?.addContent(Data("/Artifact <</SPKind (watermark)>> BDC 0.5 g 100 100 50 50 re f EMC".utf8))
+    guard let edited = try? model.incrementalData() else { return check(false, "the engine writes") }
+    _ = complete(60, { try await manager.apply(.inPlace(undoable: UndoGroup("Add Watermark", .contents(before: original, after: edited)), banner: nil),
+                                               of: ToolRequest(tool: .watermark, document: handle, workFolder: SuperPDFPaths.work)) })
+    check((handle.contents as? DocumentBaseline)?.bytes == edited, "the engine's bytes are the contents")
+    check(DocumentBaseline.saveOutcome(of: handle).data == edited, "a save (and engines) read the engine's bytes back as they are")
+    let note = PDFAnnotation(bounds: CGRect(x: 100, y: 200, width: 20, height: 20), forType: .text, withProperties: nil)
+    note.contents = "After the watermark"
+    handle.pdf.page(at: 1)?.addAnnotation(note)
+    let outcome = DocumentBaseline.saveOutcome(of: handle)
+    check(outcome.method == .appended && outcome.data.prefix(edited.count) == edited, "appended to the engine's bytes: \(outcome.method)")
+    checkFidelityStructures(outcome.data, firstPage: 0, secondPage: 1, "after an engine edit")
+    let saved = try? PDFModel(data: outcome.data)
+    check(saved?.root[privateCatalogKey]?.name == "Rengine", "the engine's catalog change")
+    let content = (try? saved?.page(at: 1)?.contentData()).map { String(decoding: $0!, as: UTF8.self) } ?? ""
+    check(content.contains("/SPKind (watermark)"), "the engine's marked content")
+    check(saved?.page(at: 1)?.annotations.contains { $0["Contents"]?.text == "After the watermark" } == true, "the note added after it")
+
+    // Undo swaps the old bytes back in as the contents.
+    handle.undoManager?.undo()
+    check((handle.contents as? DocumentBaseline)?.bytes == original, "undo brings the file's bytes back as the contents")
+    closeAll(manager)
+}
+
+/// An encrypted file can't take an appended update: it is rewritten with its own encryption kept.
+@MainActor
+private func documentKitSaveFidelityEncrypted() {
+    let folder = tempFolder("fidelity-encrypted")
+    let url = folder.appendingPathComponent("Locked.pdf")
+    try? makeEncryptedPDF(pages: 2, password: "open sesame").write(to: url)
+    guard let pdf = PDFDocument(url: url), pdf.unlock(withPassword: "open sesame") else { return check(false, "the fixture unlocks") }
+    let handle = DocumentHandle(url: url, pdf: pdf, password: "open sesame", undoManager: makeUndoManager())
+    DocumentBaseline.attach(try! Data(contentsOf: url), to: handle)
+    let note = PDFAnnotation(bounds: CGRect(x: 100, y: 100, width: 20, height: 20), forType: .text, withProperties: nil)
+    note.contents = "Still locked"
+    pdf.page(at: 1)?.addAnnotation(note)
+    let outcome = DocumentBaseline.saveOutcome(of: handle)
+    check(outcome.method == .rewritten, "an encrypted file is rewritten: \(outcome.method) \(outcome.notes)")
+    let model = try? PDFModel(data: outcome.data, password: "open sesame")
+    check(model?.isEncrypted == true && (try? PDFModel(data: outcome.data)) == nil, "it keeps its password")
+    check(model?.page(at: 1)?.annotations.contains { $0["Contents"]?.text == "Still locked" } == true, "with the new note")
+    let reopened = PDFDocument(data: outcome.data)
+    check(reopened?.isLocked == true && reopened?.unlock(withPassword: "open sesame") == true && reopened?.pageCount == 2, "PDFKit opens it with the password")
+}
+
+/// A page brought in from another document (with a note on it) is written from PDFKit's copy; the file's own pages
+/// and structures stay as they were.
+@MainActor
+private func documentKitSaveFidelityPageInserted() {
+    let folder = tempFolder("fidelity-inserted")
+    let url = folder.appendingPathComponent("Fidelity.pdf")
+    let original = fidelityFixture()
+    try? original.write(to: url)
+    let handle = openedHandle(url)
+    guard let other = PDFDocument(data: makePDF(pages: 2, size: CGSize(width: 400, height: 300))), let page = other.page(at: 1) else {
+        return check(false, "the other document")
+    }
+    let note = PDFAnnotation(bounds: CGRect(x: 20, y: 20, width: 20, height: 20), forType: .text, withProperties: nil)
+    note.contents = "From elsewhere"
+    page.addAnnotation(note)
+    other.removePage(at: 1)
+    handle.pdf.insert(page, at: 1)
+    let outcome = DocumentBaseline.saveOutcome(of: handle)
+    check(outcome.method == .appended && outcome.data.prefix(original.count) == original, "appended: \(outcome.method) \(outcome.notes)")
+    checkFidelityStructures(outcome.data, firstPage: 0, secondPage: 2, "a page inserted")
+    guard let model = try? PDFModel(data: outcome.data) else { return check(false, "QPDF opens it") }
+    let inserted = model.page(at: 1)
+    check(model.pageCount == 4 && inserted?.box(.media).size == CGSize(width: 400, height: 300), "the inserted page, at its size")
+    check(inserted?.annotations.first { $0["Subtype"]?.name == "Text" }?["Contents"]?.text == "From elsewhere", "with its note")
+    check(inserted?.annotations.allSatisfy { $0["P"].map { $0.isSameObject(as: inserted!.object) } ?? true } == true, "the note points at its page")
+    check(PDFDocument(data: outcome.data)?.page(at: 1)?.annotations.contains { $0.contents == "From elsewhere" } == true, "PDFKit reads it")
 }

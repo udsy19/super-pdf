@@ -98,6 +98,16 @@ public struct DocumentState: Hashable, Sendable {
     }
 }
 
+/// A document's authoritative bytes and how PDFKit-level changes go back into them (DocumentKit's structure-preserving
+/// save, ARCHITECTURE "Contract notes"). PDFKit redraws every page and drops document structure when it writes, so a
+/// document DocumentKit opened keeps the bytes it was read from (or the bytes an engine edit made) and writes only the
+/// changes made through PDFKit into them.
+@MainActor
+public protocol DocumentContents: AnyObject {
+    /// The current bytes of `document`: the authoritative bytes with what changed through PDFKit since applied.
+    func snapshot(of document: DocumentHandle) -> PDFSource
+}
+
 /// One open PDF: its file, the PDFKit document the window shows, and its state. DocumentKit creates and owns these;
 /// every other module receives them. Engines never see this object, only `snapshot()`.
 @MainActor
@@ -113,6 +123,9 @@ public final class DocumentHandle: Identifiable {
     public var password: String?
     /// The document's undo manager (NSDocument's); in-place tool results register here.
     public weak var undoManager: UndoManager?
+    /// The authoritative bytes (DocumentKit sets them whenever the window's document is read from new bytes); nil for
+    /// handles made without DocumentKit.
+    public var contents: DocumentContents?
 
     public init(id: UUID = UUID(), url: URL?, displayName: String? = nil, pdf: PDFDocument, state: DocumentState = DocumentState(),
                 password: String? = nil, undoManager: UndoManager? = nil) {
@@ -123,13 +136,13 @@ public final class DocumentHandle: Identifiable {
 
     public var pageCount: Int { pdf.pageCount }
 
-    /// The current bytes for engine work: the file when nothing is edited, else PDFKit's serialisation with the
-    /// annotation data PDFKit drops put back (`Annotating.annotationRestorer`), as a save writes it.
+    /// The current bytes for engine work: the file when nothing is edited, else the authoritative bytes with the
+    /// changes made through PDFKit written into them, as a save writes them (`contents`); PDFKit's own serialisation
+    /// only for a handle without contents.
     public func snapshot() -> PDFSource {
         if let url, !state.isEdited { return .file(url, password: password) }
-        let data = pdf.dataRepresentation() ?? Data()
-        let restored = Services.markup?.annotationRestorer(for: self).flatMap { try? $0(data) }
-        return .data(restored ?? data, password: password)
+        if let contents { return contents.snapshot(of: self) }
+        return .data(pdf.dataRepresentation() ?? Data(), password: password)
     }
 }
 

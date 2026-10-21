@@ -27,11 +27,16 @@ public enum CloseAnswer: Equatable, Sendable {
 }
 
 /// What opening produced: the PDFKit document (lazily backed by the file, so opening stays instant on big files),
-/// the password typed and whether QPDF recovery rebuilt it.
+/// the file it was read from (the repaired copy after a repair), the password typed and whether QPDF recovery rebuilt
+/// it.
 struct LoadedPDF {
     var pdf: PDFDocument
+    var file: URL
     var password: String?
     var wasRepaired: Bool
+
+    /// The bytes PDFKit read, which become the document's authoritative contents.
+    var bytes: Data? { try? Data(contentsOf: file, options: .mappedIfSafe) }
 }
 
 /// The open flow of ux §7.4: password prompt with retries, and the damaged-file prompt with Repair. Nothing here
@@ -48,7 +53,7 @@ struct DocumentLoader {
     func load(_ contents: URL, fileName: String) async throws -> LoadedPDF {
         if let pdf = PDFDocument(url: contents) {
             let password = try await unlock(pdf, fileName: fileName)
-            return LoadedPDF(pdf: pdf, password: password, wasRepaired: false)
+            return LoadedPDF(pdf: pdf, file: contents, password: password, wasRepaired: false)
         }
         // Not readable as it is: the file is missing or unreadable (say so), or damaged (offer repair).
         _ = try contents.checkResourceIsReachable()
@@ -64,7 +69,7 @@ struct DocumentLoader {
         _ = try await repairer.repair(.file(contents), embedFonts: false, to: repaired)
         guard let pdf = PDFDocument(url: repaired) else { throw DocumentError.damaged(fileName) }
         let password = try await unlock(pdf, fileName: fileName)
-        return LoadedPDF(pdf: pdf, password: password, wasRepaired: true)
+        return LoadedPDF(pdf: pdf, file: repaired, password: password, wasRepaired: true)
     }
 
     /// Asks until the password opens the file or the person cancels.

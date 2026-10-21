@@ -9,13 +9,10 @@ struct FormFacts: Equatable, Sendable {
     var scripts: [String: [AFAction: String]] = [:]
     var calculationOrder: [String] = []
     var isXFA = false
-
-    var isEmpty: Bool { scripts.isEmpty && calculationOrder.isEmpty }
 }
 
-/// The AcroForm at the dictionary level, on bytes, off the main actor (ISO 32000-2 §12.7): reads the facts above,
-/// adds, changes and removes fields, and puts the facts back into a file PDFKit wrote. Every write keeps the file's
-/// own encryption.
+/// The AcroForm at the dictionary level, on bytes, off the main actor (ISO 32000-2 §12.7): reads the facts above and
+/// adds, changes and removes fields. Every write keeps the file's own encryption.
 enum FormFile {
     /// /AA keys of the scripts we keep.
     static let actionKeys: [AFAction: String] = [.keystroke: "K", .format: "F", .validate: "V", .calculate: "C"]
@@ -192,22 +189,6 @@ enum FormFile {
         let order = calculationOrder(model).filter { !names.contains($0) }
         for name in names { model.removeField(named: name) }
         if model.acroForm?["CO"] != nil { setCalculationOrder(order, in: model) }
-    }
-
-    /// Puts the facts back into a file PDFKit wrote: each field's scripts, the calculation order, and the /AcroForm's
-    /// appearance defaults. Fields the facts don't know are left as they are.
-    static func restore(_ facts: FormFacts, into data: Data, password: String?) throws -> Data {
-        try edit(data, password: password) { model in
-            guard model.acroForm != nil else { return }
-            prepareForm(model)
-            let fields = Dictionary(model.formFields().map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
-            for (name, scripts) in facts.scripts {
-                guard let field = fields[name] else { continue }
-                setScripts(scripts, on: field.object, in: model)
-            }
-            let order = facts.calculationOrder.filter { fields[$0] != nil }
-            if !order.isEmpty { setCalculationOrder(order, in: model) }
-        }
     }
 
     // MARK: Parts

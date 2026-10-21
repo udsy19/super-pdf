@@ -1,5 +1,6 @@
 import AppKit
 import CoreText
+import DocumentKit
 @testable import EditKit
 import ImageIO
 import PDFKit
@@ -755,12 +756,14 @@ private func editOpened(_ data: Data, name: String) -> DocumentHandle {
     return DocumentHandle(url: url, pdf: PDFDocument(url: url)!, undoManager: makeUndoManager())
 }
 
-/// The bytes an in-place result carries, applied to the handle the way DocumentKit does (the fake only records).
+/// The bytes an in-place result carries, applied to the handle the way DocumentKit does (the fake only records): the
+/// window shows them and they are the document's contents.
 @MainActor
 private func editApply(_ group: UndoGroup, to document: DocumentHandle) -> Bool {
     guard case .contents(_, let after) = group.change, let pdf = PDFDocument(data: after) else { return false }
     document.pdf = pdf
     document.state.isEdited = true
+    DocumentBaseline.attach(after, to: document)
     return true
 }
 
@@ -783,15 +786,15 @@ private func editService() {
     check(service.decorations(in: document).isEmpty, "nothing on the handle until the bytes are applied")
     check(editApply(group, to: document), "applied")
     check(service.decorations(in: document) == [.headerFooter], "the header is listed from the new bytes")
-    // PDFKit's own serialisation redraws the pages (the tags go), so EditKit keeps working on the bytes it saved while
-    // the window shows exactly them, and falls back to the snapshot once something changed through PDFKit.
-    check(EditSource.current(for: document).key.hasPrefix("revision:"), "EditKit's saved bytes are the source")
+    // The snapshot is EditKit's bytes as they are, and a change made through PDFKit goes into them without redrawing
+    // the pages, so the tags stay.
+    if case .data(let bytes, _) = EditSource.source(for: document) { check(bytes == after, "EditKit's saved bytes are the source") }
     if let page = document.pdf.page(at: 1) {
         let note = PDFAnnotation(bounds: CGRect(x: 100, y: 100, width: 20, height: 20), forType: .text, withProperties: nil)
         page.addAnnotation(note)
-        check(EditSource.current(for: document).key.hasPrefix("snapshot:"), "a change made through PDFKit is not lost: the snapshot is the source")
+        check(service.decorations(in: document) == [.headerFooter], "a change made through PDFKit keeps EditKit's tags")
         page.removeAnnotation(note)
-        check(EditSource.current(for: document).key.hasPrefix("revision:"), "back as saved: the saved bytes again")
+        if case .data(let bytes, _) = EditSource.source(for: document) { check(bytes == after, "back as saved: the saved bytes again") }
     }
     // Replacing keeps one set; removing takes it away.
     let again = (complete { try await service.apply(.headerFooter(header), to: [0], in: document, replacing: true) }).flatMap { try? $0.get() }
