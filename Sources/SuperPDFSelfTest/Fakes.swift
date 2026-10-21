@@ -283,10 +283,8 @@ final class FakeHelpers: HelperManaging {
     var changes: AnyPublisher<Void, Never> { subject.eraseToAnyPublisher() }
 
     func detect() { detections += 1 }
-    func installLibreOffice() -> AsyncThrowingStream<DownloadProgress, Error> {
-        fakeStream([DownloadProgress(bytesReceived: 0, bytesExpected: 800_000_000), DownloadProgress(bytesReceived: 800_000_000, bytesExpected: 800_000_000)])
-    }
-    func removeLibreOffice() throws { libreOffice = .notInstalled }
+    var downloadPagesOpened = 0
+    func getLibreOffice() { downloadPagesOpened += 1 }
 }
 
 // MARK: - EditKit

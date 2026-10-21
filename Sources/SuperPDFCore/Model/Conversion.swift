@@ -84,7 +84,7 @@ public enum BuiltInConverter: String, Codable, CaseIterable, Sendable {
 /// One way to convert, in ranking order (features §3.2).
 public enum ConverterEngine: Codable, Hashable, Sendable {
     case builtIn(BuiltInConverter)
-    /// The LibreOffice helper, detected or installed on request; never bundled.
+    /// The LibreOffice helper, when the person has installed it; never bundled.
     case libreOffice
     /// The owning app on this Mac, driven with Apple Events (it opens briefly).
     case app(OfficeApp)
@@ -108,7 +108,7 @@ public struct ConverterRoute: Hashable, Sendable {
 /// Whether an engine can run on this Mac right now (ConvertKit decides; the panel's engine line says it).
 public enum ConverterAvailability: Hashable, Sendable {
     case available
-    /// LibreOffice isn't installed: offer "Install the free Office converter".
+    /// LibreOffice isn't installed: the panel explains and offers "Get LibreOffice".
     case needsLibreOffice
     /// The app isn't installed ("Pages is free on the Mac App Store").
     case needsApp(OfficeApp)
@@ -183,10 +183,9 @@ public struct ConversionResult: Hashable, Sendable {
     }
 }
 
-/// The LibreOffice helper (features §3.2): detected, installed on request, removable.
+/// The LibreOffice helper (features §3.2): an installed copy, detected; never bundled or installed by Super PDF.
 public enum HelperStatus: Hashable, Sendable {
     case notInstalled
-    case installing(DownloadProgress)
+    /// `at` is the `soffice` executable that runs headless.
     case installed(at: URL, version: String?)
-    case failed(String)
 }

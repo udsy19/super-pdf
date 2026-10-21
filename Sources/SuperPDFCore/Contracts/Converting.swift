@@ -17,17 +17,17 @@ public protocol Converting: AnyObject {
     func convert(_ job: ConversionJob, progress: ToolProgress) async throws -> ConversionResult
 }
 
-/// The LibreOffice helper and the Office apps on this Mac (features §3.2; Settings › Converters).
+/// The LibreOffice helper and the Office apps on this Mac (features §3.2; Settings › Converters). LibreOffice is never
+/// bundled, downloaded or installed by Super PDF: an installed copy is detected and run headless; when there is none,
+/// panels explain and offer "Get LibreOffice".
 @MainActor
 public protocol HelperManaging: AnyObject {
     var libreOffice: HelperStatus { get }
     /// Apps found for automation, with where they live.
     var officeApps: [OfficeApp: URL] { get }
-    /// Looks again (launch, Settings, after an install).
+    /// Looks again (launch, Settings, after the person installed LibreOffice or an app).
     func detect()
-    /// Downloads the official DMG, checks SHA-256 and the code signature, installs into `SuperPDFPaths.helpers`. Explicit
-    /// only (about 800 MB), never automatic.
-    func installLibreOffice() -> AsyncThrowingStream<DownloadProgress, Error>
-    func removeLibreOffice() throws
+    /// Opens LibreOffice's download page in the browser ("Get LibreOffice"); nothing is downloaded by Super PDF.
+    func getLibreOffice()
     var changes: AnyPublisher<Void, Never> { get }
 }

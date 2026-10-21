@@ -237,7 +237,8 @@ public enum Strings {
         public static func needsLibreOffice(kind: String, fileExtension: String) -> String {
             "\(kind) saved as \(quoted("." + fileExtension)) need the free Office converter (LibreOffice, about 800 MB)."
         }
-        public static let installAction = "Install…"
+        /// Opens LibreOffice's download page (Super PDF never installs it itself).
+        public static let getLibreOffice = "Get LibreOffice"
 
         public static func needsOfficeApp(_ app: OfficeApp) -> String {
             "To convert this with full fidelity, \(app.shortName) needs to open it briefly."

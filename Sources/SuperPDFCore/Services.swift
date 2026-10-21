@@ -78,7 +78,7 @@ public enum SuperPDFPaths {
     nonisolated(unsafe) public static var base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
 
     public static var support: URL { ensure(base.appendingPathComponent(supportFolderName, isDirectory: true)) }
-    /// Helper apps installed on request: `Helpers/LibreOffice.app` (features §3.2).
+    /// Helper state: LibreOffice's private profile (features §3.2; LibreOffice itself is the person's own install).
     public static var helpers: URL { ensure(support.appendingPathComponent("Helpers", isDirectory: true)) }
     /// LibreOffice's private profile (`-env:UserInstallation=`), so runs never touch the user's own profile.
     public static var libreOfficeProfile: URL { ensure(helpers.appendingPathComponent("lo-profile", isDirectory: true)) }
