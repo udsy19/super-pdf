@@ -242,6 +242,14 @@ struct StructureMerge {
             }
             if references.isEmpty { page.remove("Annots") } else { page.set("Annots", .array(references)) }
         }
+        // Removed pages leave the file whole: their widgets leave the form now, everything else once the page tree is final.
+        var removedPages: RemovedPages?
+        if plan.removesPages {
+            let kept = Set(finalPages.compactMap(\.objectID))
+            let removed = RemovedPages(model: model, removed: filePages.map(\.object).filter { !kept.contains($0.objectID ?? -1) }, kept: finalPages)
+            removedWidgets.formUnion(removed.widgets)
+            removedPages = removed
+        }
         updateFields(added: fromPDFKit.filter { !$0.merge && $0.object["Subtype"]?.name == "Widget" }.map(\.object), removed: removedWidgets,
                      importer: importer)
 
@@ -260,8 +268,9 @@ struct StructureMerge {
             for (box, rect) in entry.boxes { page.setBox(box, rect) }
         }
 
-        if let outline = plan.outline { writeOutline(outline, matching: oldOutline) }
+        if let outline = plan.outline { writeOutline(outline, matching: oldOutline, removedPages: removedPages?.pages ?? []) }
         for (key, value) in plan.attributes { model.setInfo(key, value.isEmpty ? nil : value) }
+        if !plan.attributes.isEmpty { model.updateXMP(forInfo: Set(plan.attributes.keys), modified: Date()) }
 
         if let restorer {
             var named: [String: AnyObject] = [:]
@@ -275,6 +284,11 @@ struct StructureMerge {
                 }
             }
             try restorer.restore(model, named, written)
+        }
+
+        if let removedPages {
+            let cleared = removedPages.run(sources: plan.pages.map(\.source))
+            if cleared > 0 { Log.documents.notice("Save: cleared \(cleared) other references to removed pages") }
         }
 
         if plan.removesPages || !model.canSaveIncrementally {
@@ -385,7 +399,7 @@ struct StructureMerge {
 
     /// Writes PDFKit's bookmarks; one that is still the file's (same title, same page) keeps its own destination
     /// (named destinations stay names), action, colour, style and structure element.
-    private func writeOutline(_ nodes: [OutlineNode], matching old: [(title: String, page: Int?, object: PDFObject)]) {
+    private func writeOutline(_ nodes: [OutlineNode], matching old: [(title: String, page: Int?, object: PDFObject)], removedPages: Set<Int>) {
         func items(_ nodes: [OutlineNode]) -> [PDFOutlineItem] {
             nodes.map { node in
                 let destination = node.page.map { PDFModelKit.PDFDestination(page: $0, view: node.point.map { .xyz(left: $0.x, top: $0.y, zoom: nil) } ?? .fit) }
@@ -402,7 +416,10 @@ struct StructureMerge {
                 guard let object = current else { return }
                 if let id = object.objectID { guard visited.insert(id).inserted else { return } }
                 let page = node.page.flatMap { model.page(at: $0)?.object.objectID }
-                if let match = unused.firstIndex(where: { $0.title == node.title && $0.page == page }) {
+                // A bookmark PDFKit shows without a page may be one whose page was removed: it gets its destination
+                // back so the save can tell, and drops it.
+                if let match = unused.firstIndex(where: { $0.title == node.title && $0.page == page })
+                    ?? (page == nil ? unused.firstIndex(where: { $0.title == node.title && $0.page.map(removedPages.contains) == true }) : nil) {
                     let original = unused.remove(at: match).object
                     let keep = original.value.dictionaryValue ?? [:]
                     for (key, value) in keep where !["Title", "Parent", "Prev", "Next", "First", "Last", "Count"].contains(key) {

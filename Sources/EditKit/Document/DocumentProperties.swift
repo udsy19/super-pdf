@@ -2,7 +2,7 @@ import Foundation
 import PDFModelKit
 
 // Document properties and the initial view (features #124, #10): the Info dictionary (title, author, subject, keywords,
-// custom fields), how the file opens (page, zoom, layout, sidebar) and the XMP packet's title and author kept in step.
+// custom fields), how the file opens (page, zoom, layout, sidebar) and the XMP packet kept in step.
 
 /// How the file opens (ISO 32000-2 §12.2, §12.3.2).
 public struct InitialView: Codable, Hashable, Sendable {
@@ -73,7 +73,7 @@ public struct DocumentProperties: Codable, Hashable, Sendable {
         return properties
     }
 
-    /// Writes the properties into the model (and the XMP packet's title and author when it has one).
+    /// Writes the properties into the model (and into the XMP packet when it has one).
     public func write(to model: PDFModel) {
         model.setInfo("Title", title.isEmpty ? nil : title)
         model.setInfo("Author", author.isEmpty ? nil : author)
@@ -98,25 +98,6 @@ public struct DocumentProperties: Codable, Hashable, Sendable {
         }
         if view.layout == .default { model.root.remove("PageLayout") } else { model.root.set("PageLayout", .name(view.layout.rawValue)) }
         if view.sidebar == .default { model.root.remove("PageMode") } else { model.root.set("PageMode", .name(view.sidebar.rawValue)) }
-        updateXMP(in: model)
-    }
-
-    /// Keeps dc:title and dc:creator of an existing XMP packet in step with the Info dictionary.
-    private func updateXMP(in model: PDFModel) {
-        guard let metadata = model.root["Metadata"], metadata.type == .stream, let data = try? metadata.streamData(decode: .all),
-              var xml = String(data: data, encoding: .utf8) else { return }
-        func escape(_ s: String) -> String {
-            s.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "<", with: "&lt;").replacingOccurrences(of: ">", with: "&gt;")
-        }
-        func replace(tag: String, inner: String) {
-            let pattern = "<\(tag)(\\s[^>]*)?>[\\s\\S]*?</\(tag)>"
-            if let regex = try? NSRegularExpression(pattern: pattern) {
-                xml = regex.stringByReplacingMatches(in: xml, range: NSRange(xml.startIndex..., in: xml), withTemplate: NSRegularExpression.escapedTemplate(for: "<\(tag)>\(inner)</\(tag)>"))
-            }
-        }
-        if !title.isEmpty { replace(tag: "dc:title", inner: "<rdf:Alt><rdf:li xml:lang=\"x-default\">\(escape(title))</rdf:li></rdf:Alt>") }
-        if !author.isEmpty { replace(tag: "dc:creator", inner: "<rdf:Seq><rdf:li>\(escape(author))</rdf:li></rdf:Seq>") }
-        if !subject.isEmpty { replace(tag: "dc:description", inner: "<rdf:Alt><rdf:li xml:lang=\"x-default\">\(escape(subject))</rdf:li></rdf:Alt>") }
-        metadata.setStreamData(Data(xml.utf8))
+        model.updateXMP(forInfo: ["Title", "Author", "Subject", "Keywords"], modified: Date())
     }
 }

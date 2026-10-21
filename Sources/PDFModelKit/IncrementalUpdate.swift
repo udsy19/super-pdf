@@ -231,7 +231,8 @@ struct IncrementalWriter {
     private static func writeStream(_ stream: PDFObject, into out: inout Data) throws {
         var dict = stream.value.dictionaryValue ?? [:]
         var data = try stream.streamData(decode: .none)
-        if dict["Filter"] == nil, dict["DecodeParms"] == nil, data.count > 64, let compressed = Flate.compress(data), compressed.count < data.count {
+        // XMP stays readable as it is (PDF/A-1 forbids a filter on it), as QPDF's own writer leaves it.
+        if dict["Filter"] == nil, dict["DecodeParms"] == nil, dict["Type"]?.nameValue != "Metadata", data.count > 64, let compressed = Flate.compress(data), compressed.count < data.count {
             data = compressed
             dict["Filter"] = .name("FlateDecode")
         }

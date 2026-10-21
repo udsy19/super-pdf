@@ -34,6 +34,8 @@ func registerDocumentKitTests() {
     SelfTest.cases.append(("DocumentKit.saveFidelityEngineEdit", { documentKitSaveFidelityEngineEdit() }))
     SelfTest.cases.append(("DocumentKit.saveFidelityEncrypted", { documentKitSaveFidelityEncrypted() }))
     SelfTest.cases.append(("DocumentKit.saveFidelityPageInserted", { documentKitSaveFidelityPageInserted() }))
+    SelfTest.cases.append(("DocumentKit.saveRemovedPagePrivacy", { documentKitSaveRemovedPagePrivacy() }))
+    SelfTest.cases.append(("DocumentKit.saveXMP", { documentKitSaveXMP() }))
 }
 
 // MARK: - Fixtures
@@ -778,4 +780,271 @@ private func documentKitSaveFidelityPageInserted() {
     check(inserted?.annotations.first { $0["Subtype"]?.name == "Text" }?["Contents"]?.text == "From elsewhere", "with its note")
     check(inserted?.annotations.allSatisfy { $0["P"].map { $0.isSameObject(as: inserted!.object) } ?? true } == true, "the note points at its page")
     check(PDFDocument(data: outcome.data)?.page(at: 1)?.annotations.contains { $0.contents == "From elsewhere" } == true, "PDFKit reads it")
+}
+
+// MARK: - Removed pages leave the file
+
+/// Unique bytes of what only the removed page has.
+private let removedPageSecrets = ["TOPSECRET-PAGE-TWO", "IMGSECRET0123456", "SECRET-ALT-FIGURE", "SECRET-NOTE", "SECRET-FIELD-VALUE",
+                                  "Secret chapter", "secretDest", "oldSecret", "secretField", "fig-secret"]
+
+/// Three tagged pages; the second has unique text, an image, its own structure subtree, a tagged note, a form field
+/// and an article bead, and bookmarks, named destinations, links, the open action and an ID tree entry point at it.
+private func removedPageFixture() -> Data {
+    let model = try! PDFModel(data: makePDF(pages: 3))
+    let root = model.root
+    let pages = model.pages
+    let (one, two, three) = (pages[0], pages[1], pages[2])
+    let refs = pages.map { $0.object.reference! }
+    let font = model.makeIndirect(.dictionary(["Type": .name("Font"), "Subtype": .name("Type1"), "BaseFont": .name("Helvetica")]))
+    for page in pages { page.ownResources().dictionary("Font").set("FH", font) }
+    one.addContent(Data("/P <</MCID 0>> BDC BT /FH 12 Tf 72 700 Td (Keep one) Tj ET EMC /Span <</MCID 1>> BDC BT /FH 12 Tf 72 680 Td (Shared) Tj ET EMC".utf8))
+    three.addContent(Data("/P <</MCID 0>> BDC BT /FH 12 Tf 72 700 Td (Keep three) Tj ET EMC".utf8))
+    let image = model.makeStream(["Type": .name("XObject"), "Subtype": .name("Image"), "Width": .integer(4), "Height": .integer(4),
+                                  "ColorSpace": .name("DeviceGray"), "BitsPerComponent": .integer(8)], data: Data("IMGSECRET0123456".utf8))
+    two.ownResources().dictionary("XObject").set("Im1", image)
+    two.addContent(Data("""
+    /P <</MCID 0>> BDC BT /FH 12 Tf 72 700 Td (TOPSECRET-PAGE-TWO) Tj ET EMC
+    /Figure <</MCID 1>> BDC q 100 0 0 100 72 500 cm /Im1 Do Q EMC
+    /Span <</MCID 2>> BDC BT /FH 12 Tf 72 480 Td (Shared too) Tj ET EMC
+    """.utf8))
+
+    // Annotations: links on page 1 to page 2 (explicit, named) and to page 3; a tagged note and a field on page 2.
+    func link(_ y: CGFloat, _ dest: PDFValue) -> PDFObject {
+        model.makeIndirect(.dictionary(["Type": .name("Annot"), "Subtype": .name("Link"), "Rect": .rect(CGRect(x: 72, y: y, width: 100, height: 12)), "Dest": dest]))
+    }
+    let toTwo = link(600, .array([refs[1], .name("Fit")])), toSecret = link(580, .ascii("secretDest")), toThree = link(560, .array([refs[2], .name("Fit")]))
+    let viaAction = model.makeIndirect(.dictionary(["Type": .name("Annot"), "Subtype": .name("Link"), "Rect": .rect(CGRect(x: 72, y: 540, width: 100, height: 12)),
+                                                     "A": .dictionary(["S": .name("GoTo"), "D": .name("oldSecret")])]))
+    for annotation in [toTwo, toSecret, toThree, viaAction] { one.addAnnotation(annotation) }
+    let note = model.makeIndirect(.dictionary(["Type": .name("Annot"), "Subtype": .name("Text"), "Rect": .rect(CGRect(x: 300, y: 700, width: 20, height: 20)),
+                                                "Contents": .text("SECRET-NOTE"), "StructParent": .integer(2)]))
+    let field = model.makeIndirect(.dictionary(["Type": .name("Annot"), "Subtype": .name("Widget"), "FT": .name("Tx"), "T": .text("secretField"),
+                                                 "Rect": .rect(CGRect(x: 72, y: 300, width: 200, height: 20)), "V": .text("SECRET-FIELD-VALUE"), "F": .integer(4),
+                                                 "DA": .ascii("/Helv 12 Tf 0 g")]))
+    let keptField = model.makeIndirect(.dictionary(["Type": .name("Annot"), "Subtype": .name("Widget"), "FT": .name("Tx"), "T": .text("keptField"),
+                                                     "Rect": .rect(CGRect(x: 72, y: 300, width: 200, height: 20)), "V": .text("kept value"), "F": .integer(4),
+                                                     "DA": .ascii("/Helv 12 Tf 0 g")]))
+    two.addAnnotation(note); two.addAnnotation(field); three.addAnnotation(keptField)
+    root.set("AcroForm", .dictionary(["Fields": .array([field.reference!, keptField.reference!]), "CO": .array([field.reference!, keptField.reference!]),
+                                      "DA": .ascii("/Helv 0 Tf 0 g"), "DR": .dictionary(["Font": .dictionary(["Helv": font.reference!])])]))
+
+    // The structure tree: page 1 and 3 paragraphs, a section only on page 2 (paragraph, figure, the note), and a span
+    // over pages 1 and 2.
+    let structRoot = model.makeIndirect(.dictionary(["Type": .name("StructTreeRoot")]))
+    let document = model.makeIndirect(.dictionary(["Type": .name("StructElem"), "S": .name("Document"), "P": structRoot.reference!]))
+    func element(_ type: String, parent: PDFObject, _ extra: [String: PDFValue]) -> PDFObject {
+        var dictionary: [String: PDFValue] = ["Type": .name("StructElem"), "S": .name(type), "P": parent.reference!]
+        dictionary.merge(extra) { $1 }
+        return model.makeIndirect(.dictionary(dictionary))
+    }
+    let keepOne = element("P", parent: document, ["Pg": refs[0], "K": .integer(0), "Alt": .text("Keep-one")])
+    let section = element("Sect", parent: document, ["Pg": refs[1], "T": .text("Secret section")])
+    let secretParagraph = element("P", parent: section, ["Pg": refs[1], "K": .integer(0)])
+    let figure = element("Figure", parent: section, ["Pg": refs[1], "K": .integer(1), "Alt": .text("SECRET-ALT-FIGURE"), "ID": .ascii("fig-secret")])
+    let noteElement = element("Annot", parent: section, ["K": .dictionary(["Type": .name("OBJR"), "Obj": note.reference!, "Pg": refs[1]])])
+    section.set("K", .array([secretParagraph.reference!, figure.reference!, noteElement.reference!]))
+    let span = element("Span", parent: document, ["Pg": refs[0], "K": .array([.integer(1), .dictionary(["Type": .name("MCR"), "Pg": refs[1], "MCID": .integer(2)])])])
+    let keepThree = element("P", parent: document, ["Pg": refs[2], "K": .integer(0), "Alt": .text("Keep-three")])
+    document.set("K", .array([keepOne.reference!, section.reference!, span.reference!, keepThree.reference!]))
+    structRoot.set("K", document)
+    one.object.set("StructParents", .integer(0))
+    two.object.set("StructParents", .integer(1))
+    three.object.set("StructParents", .integer(3))
+    structRoot.set("ParentTree", .dictionary(["Nums": .array([
+        .integer(0), .array([keepOne.reference!, span.reference!]),
+        .integer(1), .array([secretParagraph.reference!, figure.reference!, span.reference!]),
+        .integer(2), noteElement.reference!,
+        .integer(3), .array([keepThree.reference!]),
+    ])]))
+    structRoot.set("ParentTreeNextKey", .integer(4))
+    structRoot.set("IDTree", PDFNameTree.make(in: model, entries: [(Data("fig-secret".utf8), figure), (Data("p-one".utf8), keepOne)]))
+    keepOne.set("ID", .ascii("p-one"))
+    root.set("StructTreeRoot", structRoot)
+    root.set("MarkInfo", .dictionary(["Marked": .bool(true)]))
+
+    // Bookmarks (one to page 2 with a child to page 3), named destinations, the open action, labels and a thread.
+    let outlines = model.makeIndirect(.dictionary(["Type": .name("Outlines")]))
+    let intro = model.makeIndirect(.dictionary(["Title": .text("Intro"), "Parent": outlines.reference!, "Dest": .array([refs[0], .name("Fit")])]))
+    let secret = model.makeIndirect(.dictionary(["Title": .text("Secret chapter"), "Parent": outlines.reference!, "Dest": .array([refs[1], .name("Fit")]),
+                                                  "SE": section.reference!]))
+    let child = model.makeIndirect(.dictionary(["Title": .text("Child of secret"), "Parent": secret.reference!, "Dest": .array([refs[2], .name("Fit")])]))
+    let end = model.makeIndirect(.dictionary(["Title": .text("End"), "Parent": outlines.reference!, "A": .dictionary(["S": .name("GoTo"), "D": .ascii("endDest")])]))
+    intro.set("Next", secret); secret.set("Prev", intro); secret.set("Next", end); end.set("Prev", secret)
+    secret.set("First", child); secret.set("Last", child); secret.set("Count", .integer(1))
+    outlines.set("First", intro); outlines.set("Last", end); outlines.set("Count", .integer(4))
+    root.set("Outlines", outlines)
+    root.dictionary("Names").set("Dests", PDFNameTree.make(in: model, entries: [
+        (Data("secretDest".utf8), model.makeIndirect(.array([refs[1], .name("XYZ"), .integer(0), .integer(792), .null]))),
+        (Data("endDest".utf8), model.makeIndirect(.array([refs[2], .name("Fit")]))),
+    ]))
+    root.set("Dests", .dictionary(["oldSecret": .array([refs[1], .name("Fit")]), "oldEnd": .array([refs[2], .name("Fit")])]))
+    root.set("OpenAction", .array([refs[1], .name("FitH"), .integer(700)]))
+    model.setPageLabels([PDFPageLabelRange(startPage: 0, style: .lowerRoman)])
+    let thread = model.makeIndirect(.dictionary(["Type": .name("Thread"), "I": .dictionary(["Title": .text("Story")])]))
+    let beadTwo = model.makeIndirect(.dictionary(["Type": .name("Bead"), "T": thread.reference!, "P": refs[1], "R": .rect(CGRect(x: 72, y: 72, width: 200, height: 600))]))
+    let beadThree = model.makeIndirect(.dictionary(["Type": .name("Bead"), "P": refs[2], "R": .rect(CGRect(x: 72, y: 72, width: 200, height: 600))]))
+    beadTwo.set("N", beadThree); beadTwo.set("V", beadThree); beadThree.set("N", beadTwo); beadThree.set("V", beadTwo)
+    thread.set("F", beadTwo)
+    two.object.set("B", .array([beadTwo.reference!])); three.object.set("B", .array([beadThree.reference!]))
+    root.set("Threads", .array([thread.reference!]))
+    // A key only some app reads, pointing at the page: the save can't know it, and must still not keep the page.
+    root.set("SPPrivate", .dictionary(["Pages": .array([refs[1], refs[2]]), "Last": refs[1]]))
+    return try! model.data(options: PDFWriteOptions(objectStreams: .disable, compressStreams: false))
+}
+
+/// The file's bytes with every stream decoded and no object streams, as QPDF writes them.
+private func decodedBytes(_ data: Data) -> Data? {
+    try? PDFModel(data: data).data(options: PDFWriteOptions(objectStreams: .disable, compressStreams: false, decodeLevel: .generalized))
+}
+
+/// Removing a page through PDFKit and saving leaves nothing of it in the file: no object with its text, image, tags,
+/// note, field, bookmark or named destination is written, while the other pages keep their tags, links and the rest.
+@MainActor
+private func documentKitSaveRemovedPagePrivacy() {
+    let folder = tempFolder("removed-privacy")
+    let url = folder.appendingPathComponent("Secret.pdf")
+    let original = removedPageFixture()
+    try? original.write(to: url)
+    let before = decodedBytes(original) ?? Data()
+    check(removedPageSecrets.allSatisfy { before.range(of: Data($0.utf8)) != nil }, "the fixture has every secret")
+    let handle = openedHandle(url)
+    handle.pdf.removePage(at: 1)
+    let outcome = DocumentBaseline.saveOutcome(of: handle)
+    check(outcome.method == .rewritten && outcome.notes.isEmpty, "removing a page rewrites the file: \(outcome.method) \(outcome.notes)")
+    guard let model = try? PDFModel(data: outcome.data), let decoded = decodedBytes(outcome.data) else { return check(false, "QPDF opens the save") }
+    check(model.check().isEmpty, "QPDF finds nothing wrong: \(model.check())")
+    for secret in removedPageSecrets { check(decoded.range(of: Data(secret.utf8)) == nil, "nothing of the removed page is written: \(secret)") }
+    check(decoded.range(of: Data("/Subtype /Image".utf8)) == nil, "no image is written")
+
+    // What stays.
+    check(model.pageCount == 2, "two pages")
+    let (one, three) = (model.page(at: 0)!, model.page(at: 1)!)
+    for (page, text) in [(one, "(Keep one)"), (three, "(Keep three)")] {
+        let content = (try? page.contentData()).map { String(decoding: $0, as: UTF8.self) } ?? ""
+        check(content.contains(text), "the page's own content: \(text)")
+    }
+    let document = model.root["StructTreeRoot"]?["K"]
+    let elements = document?["K"]?.items ?? []
+    check(elements.map { $0["S"]?.name } == ["P", "Span", "P"], "the other pages' tags stay, the section goes: \(elements.map { $0["S"]?.name })")
+    check(elements.first?["Alt"]?.text == "Keep-one" && elements.last?["Alt"]?.text == "Keep-three", "with their text")
+    check(elements.first?["Pg"].map { $0.isSameObject(as: one.object) } == true && elements.last?["Pg"].map { $0.isSameObject(as: three.object) } == true,
+          "tags point at their pages")
+    let spanKids = elements.count > 1 ? (elements[1]["K"]?.items ?? []) : []
+    check(spanKids.count == 1 && spanKids.first?.int == 1, "the span keeps its content on page 1 only")
+    let parentTree = (model.root["StructTreeRoot"]?["ParentTree"]).map(PDFNumberTree.entries) ?? []
+    check(parentTree.map(\.key) == [0, 3] && one.object["StructParents"]?.int == 0 && three.object["StructParents"]?.int == 3, "the parent tree keeps the pages left")
+    check(parentTree.first?.value.items.count == 2 && parentTree.last?.value.items.first?["Alt"]?.text == "Keep-three", "with their elements")
+    let ids = (model.root["StructTreeRoot"]?["IDTree"]).map(PDFNameTree.entries) ?? []
+    check(ids.map { String(decoding: $0.key, as: UTF8.self) } == ["p-one"], "the ID tree keeps the element left")
+    check(model.root["MarkInfo"]?["Marked"]?.bool == true, "still marked")
+
+    let bookmarks = model.outlines()
+    check(bookmarks.map(\.title) == ["Intro", "Child of secret", "End"], "the bookmark to the page goes, its child takes its place: \(bookmarks.map(\.title))")
+    check(bookmarks.map { $0.destination?.page } == [0, 1, 1], "the others go where they went: \(bookmarks.map { $0.destination?.page })")
+    check(model.root["Outlines"]?["Count"]?.int == 3, "the bookmark count")
+    check(model.destination(from: model.make(.ascii("endDest")))?.page == 1 && model.destination(from: model.make(.name("oldEnd")))?.page == 1,
+          "the other named destinations stay")
+    check(model.root["Dests"]?["oldSecret"] == nil, "the removed page's named destinations go")
+    let links = one.annotations.filter { $0["Subtype"]?.name == "Link" }
+    check(links.count == 4, "the links stay on their page")
+    check(links.filter { $0["Dest"] == nil && $0["A"] == nil }.count == 3, "links to the removed page lose their destination")
+    check(links.contains { model.destination(from: $0["Dest"])?.page == 1 }, "the link to the last page still goes there")
+    check(model.root["OpenAction"]?[0].map { $0.isSameObject(as: one.object) } == true && model.root["OpenAction"]?[1]?.name == "FitH",
+          "the file opens on the first page now")
+    check(model.pageLabels().map(\.startPage) == [0, 1] && model.pageLabel(at: 0) == "i" && model.pageLabel(at: 1) == "iii", "the pages keep their labels")
+    let thread = model.root["Threads"]?[0]
+    let bead = thread?["F"]
+    check(bead?["P"].map { $0.isSameObject(as: three.object) } == true && bead?["N"].map { $0.isSameObject(as: bead!) } == true
+          && bead?["T"].map { $0.isSameObject(as: thread!) } == true, "the thread keeps the bead on the page left")
+    let private_ = model.root["SPPrivate"]
+    check(private_?["Last"] == nil && private_?["Pages"]?.count == 2 && private_?["Pages"]?[0]?.isNull == true
+          && private_?["Pages"]?[1].map { $0.isSameObject(as: three.object) } == true, "any other reference to the page is cleared")
+    check(model.formFields().map(\.name) == ["keptField"] && model.root["AcroForm"]?["CO"]?.items.map { $0["T"]?.text } == ["keptField"],
+          "the removed page's field leaves the form")
+
+    guard let reopened = PDFDocument(data: outcome.data) else { return check(false, "PDFKit opens the save") }
+    check(reopened.pageCount == 2 && reopened.page(at: 1)?.string?.contains("Keep three") == true, "PDFKit reads it")
+    check(reopened.outlineRoot?.numberOfChildren == 3, "PDFKit reads the bookmarks")
+}
+
+/// Changing the title, author, subject and keywords changes the XMP packet to match and keeps everything else in it.
+@MainActor
+private func documentKitSaveXMP() {
+    let folder = tempFolder("xmp")
+    let url = folder.appendingPathComponent("Metadata.pdf")
+    let model = try! PDFModel(data: makePDF(pages: 1))
+    model.setInfo("Title", "Old title")
+    model.setInfo("Keywords", "old")
+    let xmp = """
+    <?xpacket begin="\u{FEFF}" id="W5M0MpCehiHzreSzNTczkc9d"?>
+    <x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+    <rdf:Description rdf:about="" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:xmp="http://ns.adobe.com/xap/1.0/">
+    <dc:title><rdf:Alt><rdf:li xml:lang="x-default">Old title</rdf:li><rdf:li xml:lang="de">Alter Titel</rdf:li></rdf:Alt></dc:title>
+    <dc:creator><rdf:Seq><rdf:li>Old author</rdf:li></rdf:Seq></dc:creator>
+    <dc:format>application/pdf</dc:format>
+    <xmp:ModifyDate>2001-01-01T00:00:00Z</xmp:ModifyDate><xmp:MetadataDate>2001-01-01T00:00:00Z</xmp:MetadataDate>
+    <xmp:CreateDate>2001-01-01T00:00:00Z</xmp:CreateDate>
+    </rdf:Description>
+    <rdf:Description rdf:about="" xmlns:pdf="http://ns.adobe.com/pdf/1.3/" pdf:Keywords="old" pdf:Producer="Fixture"/>
+    <rdf:Description rdf:about="" xmlns:superpdf="https://superpdf.app/ns/"><superpdf:fixture>kept</superpdf:fixture></rdf:Description>
+    </rdf:RDF></x:xmpmeta>
+    <?xpacket end="w"?>
+    """
+    model.root.set("Metadata", model.makeStream(["Type": .name("Metadata"), "Subtype": .name("XML")], data: Data(xmp.utf8)))
+    try? model.data(options: PDFWriteOptions(objectStreams: .disable)).write(to: url)
+
+    let handle = openedHandle(url)
+    var attributes = handle.pdf.documentAttributes ?? [:]
+    attributes[PDFDocumentAttribute.titleAttribute] = "New <title> & more"
+    attributes[PDFDocumentAttribute.authorAttribute] = "Ada Lovelace"
+    attributes[PDFDocumentAttribute.subjectAttribute] = "Engines"
+    attributes[PDFDocumentAttribute.keywordsAttribute] = ["alpha", "beta"]
+    handle.pdf.documentAttributes = attributes
+    let outcome = DocumentBaseline.saveOutcome(of: handle)
+    check(outcome.method == .appended, "properties are appended: \(outcome.method) \(outcome.notes)")
+    func packet(_ data: Data) -> (PDFModel?, String) {
+        let saved = try? PDFModel(data: data)
+        let stream = saved?.root["Metadata"]
+        return (saved, (try? stream?.streamData(decode: .all)).flatMap { $0.map { String(decoding: $0, as: UTF8.self) } } ?? "")
+    }
+    let (saved, text) = packet(outcome.data)
+    check(saved?.info("Title") == "New <title> & more" && saved?.info("Keywords") == "alpha, beta", "the information dictionary")
+    check(text.contains("<rdf:li xml:lang=\"x-default\">New &lt;title&gt; &amp; more</rdf:li><rdf:li xml:lang=\"de\">Alter Titel</rdf:li>"),
+          "dc:title, other languages kept: \(text)")
+    check(text.contains("<dc:creator><rdf:Seq><rdf:li>Ada Lovelace</rdf:li></rdf:Seq></dc:creator>") && !text.contains("Old author"), "dc:creator")
+    check(text.contains("<dc:description><rdf:Alt><rdf:li xml:lang=\"x-default\">Engines</rdf:li></rdf:Alt></dc:description>"), "dc:description added")
+    check(text.contains("pdf:Keywords=\"alpha, beta\"") && !text.contains("<pdf:Keywords>"), "pdf:Keywords in place")
+    check(!text.contains("<xmp:ModifyDate>2001") && !text.contains("<xmp:MetadataDate>2001") && text.contains("<xmp:CreateDate>2001-01-01T00:00:00Z</xmp:CreateDate>"),
+          "the modification dates change, the creation date doesn't")
+    let modified = text.range(of: "<xmp:ModifyDate>([^<]*)</xmp:ModifyDate>", options: .regularExpression).map { String(text[$0]).dropFirst(16).dropLast(17) }
+    let infoDate = saved?.info("ModDate").flatMap(PDFDate.date)
+    let xmpDate = modified.flatMap { ISO8601DateFormatter().date(from: String($0)) }
+    check(infoDate != nil && xmpDate != nil && abs(infoDate!.timeIntervalSince(xmpDate!)) < 1, "xmp:ModifyDate matches /ModDate: \(String(describing: modified))")
+    check(text.contains("<dc:format>application/pdf</dc:format>") && text.contains("pdf:Producer=\"Fixture\"")
+          && text.contains("<superpdf:fixture>kept</superpdf:fixture>") && text.hasSuffix("<?xpacket end=\"w\"?>"), "the rest of the packet stays")
+    check(saved?.root["Metadata"]?["Filter"] == nil, "the packet stays readable as it is")
+    check(PDFDocument(data: outcome.data)?.documentAttributes?[PDFDocumentAttribute.titleAttribute] as? String == "New <title> & more", "PDFKit reads it")
+
+    // Removing a property removes it from the packet; a packet without the namespace gets a description for it.
+    let cleared = folder.appendingPathComponent("Cleared.pdf")
+    try? outcome.data.write(to: cleared)
+    let second = openedHandle(cleared)
+    var fewer = second.pdf.documentAttributes ?? [:]
+    fewer.removeValue(forKey: PDFDocumentAttribute.keywordsAttribute)
+    fewer.removeValue(forKey: PDFDocumentAttribute.subjectAttribute)
+    second.pdf.documentAttributes = fewer
+    let (_, after) = packet(DocumentBaseline.saveOutcome(of: second).data)
+    check(!after.contains("pdf:Keywords") && !after.contains("dc:description") && after.contains("pdf:Producer=\"Fixture\"")
+          && after.contains("Ada Lovelace"), "removed properties leave the packet: \(after)")
+
+    let fidelity = folder.appendingPathComponent("Fidelity.pdf")
+    try? fidelityFixture().write(to: fidelity)
+    let third = openedHandle(fidelity)
+    var titled = third.pdf.documentAttributes ?? [:]
+    titled[PDFDocumentAttribute.titleAttribute] = "Retitled"
+    third.pdf.documentAttributes = titled
+    let (_, added) = packet(DocumentBaseline.saveOutcome(of: third).data)
+    check(added.contains("xmlns:dc=\"http://purl.org/dc/elements/1.1/\"><dc:title><rdf:Alt><rdf:li xml:lang=\"x-default\">Retitled</rdf:li></rdf:Alt></dc:title>")
+          && added.contains("<superpdf:fixture>kept</superpdf:fixture>"), "a packet without the property gets it: \(added)")
 }
