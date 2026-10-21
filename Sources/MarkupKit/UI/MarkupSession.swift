@@ -74,6 +74,15 @@ final class MarkupSession: NSObject {
             self.bar = bar
         }
         overlay?.toolChanged()
+        pagesShown()
+    }
+
+    /// Reads the file data of the pages the window shows (only those: a long file opens without reading the rest).
+    func pagesShown() {
+        guard let pdfView else { return }
+        var pages = pdfView.visiblePages
+        if let current = pdfView.currentPage, !pages.contains(current) { pages.append(current) }
+        service.pagesShown(pages, in: document)
     }
 
     func detach() {
@@ -116,7 +125,12 @@ final class MarkupSession: NSObject {
     }
 
     func select(_ annotation: PDFAnnotation?, on page: PDFPage? = nil) {
-        if let annotation, let page { selection = (annotation, page) } else { selection = nil }
+        if let annotation, let page {
+            ledger.prepare(page)
+            selection = (annotation, page)
+        } else {
+            selection = nil
+        }
         refresh()
     }
 
@@ -242,7 +256,7 @@ final class MarkupSession: NSObject {
         let id = AnnotationLedger.id(of: annotation)
         let ledger = ledger
         // A comment's replies and states go with it.
-        let children = ledger.children(of: id).compactMap { child in page.annotations.first { ($0.value(forAnnotationKey: .superPDFID) as? String) == child } }
+        let children = ledger.children(of: id).compactMap { child in page.annotations.first { AnnotationLedger.existingID(of: $0) == child } }
         let removed = [annotation] + children
         let records = Dictionary(uniqueKeysWithValues: removed.map { a -> (String, LedgerRecord) in let i = AnnotationLedger.id(of: a); return (i, ledger[i]) })
         let take = { for a in removed { page.removeAnnotation(a) }; records.keys.forEach(ledger.remove) }

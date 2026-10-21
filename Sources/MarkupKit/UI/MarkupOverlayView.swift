@@ -43,7 +43,8 @@ final class MarkupOverlayView: NSView, NSTextViewDelegate {
         super.init(frame: pdfView.bounds)
         autoresizingMask = [.width, .height]
         let center = NotificationCenter.default
-        for name in [Notification.Name.PDFViewScaleChanged, .PDFViewPageChanged, .PDFViewDocumentChanged, .PDFViewDisplayModeChanged] {
+        for name in [Notification.Name.PDFViewScaleChanged, .PDFViewPageChanged, .PDFViewDocumentChanged, .PDFViewDisplayModeChanged,
+                     .PDFViewVisiblePagesChanged] {
             center.addObserver(self, selector: #selector(viewMoved), name: name, object: pdfView)
         }
         if let clip = pdfView.documentView?.enclosingScrollView?.contentView {
@@ -57,6 +58,7 @@ final class MarkupOverlayView: NSView, NSTextViewDelegate {
 
     @objc private func viewMoved() {
         needsDisplay = true
+        session.pagesShown()
         if let editing, let editor { editor.frame = editorFrame(for: editing.annotation, on: editing.page) }
     }
 

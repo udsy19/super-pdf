@@ -59,7 +59,7 @@ enum CommentExchange {
             guard let value, !value.isEmpty else { return }
             element.addAttribute(XMLNode.attribute(withName: key, stringValue: value) as! XMLNode)
         }
-        let id = AnnotationLedger.id(of: annotation)
+        let id = AnnotationLedger.key(of: annotation)
         let record = ledger[id]
         set("page", String(page))
         set("rect", numbers([annotation.bounds.minX, annotation.bounds.minY, annotation.bounds.maxX, annotation.bounds.maxY]))
@@ -234,7 +234,7 @@ enum CommentExchange {
             throw CommentExchangeError.unreadable
         }
         let existing = Set(CommentList.items(in: document, ledger: ledger).map(\.id))
-            .union((0..<document.pageCount).flatMap { document.pdf.page(at: $0)?.annotations.map { AnnotationLedger.id(of: $0) } ?? [] })
+            .union((0..<document.pageCount).flatMap { document.pdf.page(at: $0)?.annotations.map { AnnotationLedger.key(of: $0) } ?? [] })
         let elements = root.elements(forName: "annots").flatMap { $0.children?.compactMap { $0 as? XMLElement } ?? [] }
         var added: [(PDFAnnotation, PDFKit.PDFPage)] = []
         var links: [(String, String, String)] = []
@@ -389,7 +389,7 @@ enum CommentExchange {
             guard let page = document.pdf.page(at: index) else { continue }
             for annotation in page.annotations where AnnotationLedger.isMarkup(annotation) {
                 guard let type = annotation.type, elementNames[type] != nil else { continue }
-                let id = AnnotationLedger.id(of: annotation)
+                let id = AnnotationLedger.key(of: annotation)
                 var dictionary: [String: PDFValue] = [
                     "Type": .name("Annot"), "Subtype": .name(type), "Page": .integer(index), "Rect": .rect(annotation.bounds),
                     "NM": .text(id), "T": .text(annotation.userName ?? ""), "Contents": .text(annotation.contents ?? ""),

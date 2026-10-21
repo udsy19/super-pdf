@@ -11,7 +11,8 @@ import SuperPDFCore
 // plus MarkupKit's restorer) and read back with PDFKit and QPDF; files made elsewhere (reply threads, attached files,
 // voice notes) keep what PDFKit alone would drop; XFDF/FDF/CSV exchange; measuring maths; the Sketch recogniser; the
 // menu commands; the five tiles driven through ToolsKit's ToolSession; offscreen renders of pages, the bar, the
-// selection layer, the panels and the comment summary ($SUPERPDF_RENDERS, else the scratch folder).
+// selection layer, the panels and the comment summary ($SUPERPDF_RENDERS, else the scratch folder); a long file opens
+// without MarkupKit reading its annotations.
 
 func registerMarkupKitTests() {
     SelfTest.cases.append(("MarkupKit.install", { markupInstall() }))
@@ -25,6 +26,7 @@ func registerMarkupKitTests() {
     SelfTest.cases.append(("MarkupKit.panels", { markupPanels() }))
     SelfTest.cases.append(("MarkupKit.layer", { markupLayer() }))
     SelfTest.cases.append(("MarkupKit.renders", { markupRenders() }))
+    SelfTest.cases.append(("MarkupKit.performance", { markupPerformance() }))
 }
 
 // MARK: - Fixtures
@@ -773,4 +775,80 @@ private func save(_ rep: NSBitmapImageRep, _ name: String) -> String {
     try? rep.representation(using: .png, properties: [:])?.write(to: url)
     print("  render: \(url.path)")
     return url.path
+}
+
+// MARK: - Performance
+
+/// "Light as Preview" with markup installed: a 2000-page file with 8000 annotations opens (DocumentKit's open, MarkupKit
+/// told of it) and shows its first page without MarkupKit reading the other pages; the rest is read in the background
+/// in slices, the comments list then costs no stall to build, and the reading doesn't make a save compare the pages.
+/// Budgets are checked in release builds; a debug build prints the times and skips them.
+@MainActor
+private func markupPerformance() {
+    installFakes()
+    let documents = Services.documents as! FakeDocuments
+    let url = markupFolder.appendingPathComponent("Long.pdf")
+    let original = performanceFixture(pages: 2000)
+    guard (try? original.write(to: url)) != nil, original.count > 0 else { return check(false, "the fixture is written") }
+
+    // Open to the first page: MarkupKit installed, DocumentKit's open, the opened event, the first page drawn and read.
+    var handle: DocumentHandle!
+    var service: MarkupService!
+    let open = mainThreadTime {
+        MarkupKitModule.install()
+        service = (Services.markup as! MarkupService)
+        guard let pdf = DocumentBaseline.document(url: url), let bytes = try? Data(contentsOf: url, options: .mappedIfSafe) else { return }
+        handle = DocumentHandle(url: url, pdf: pdf, state: DocumentState(), undoManager: makeUndoManager())
+        DocumentBaseline.attach(bytes, to: handle)
+        documents.openDocuments.append(handle)
+        documents.subject.send(.opened(handle.id))
+        guard let first = pdf.page(at: 0) else { return }
+        _ = first.annotations   // PDFKit draws it
+        service.pagesShown([first], in: handle)
+    }
+    guard handle != nil, handle.pageCount == 2000 else { return check(false, "the long file opens") }
+    let ledger = service.ledger(for: handle)
+    check(ledger.hasRead(handle.pdf.page(at: 0)!) && !ledger.hasRead(handle.pdf.page(at: 1)!), "only the page shown was read")
+
+    // The background reading: slices on the main thread until every page is read.
+    var longestSlice = 0.0
+    let started = Date()
+    while !ledger.hasRead(handle) && Date().timeIntervalSince(started) < 60 {
+        longestSlice = max(longestSlice, mainThreadTime { RunLoop.main.run(until: Date().addingTimeInterval(0.002)) })
+    }
+    let reading = Date().timeIntervalSince(started) * 1000
+    check(ledger.hasRead(handle), "every page is read in the background")
+
+    var comments: [CommentItem] = []
+    let list = mainThreadTime { comments = service.comments(in: handle) }
+    check(comments.count == 6000 && comments.filter { $0.kind == .note }.count == 2000, "the comments list has every page's markup: \(comments.count)")
+    check(comments.first { $0.kind == .note && $0.page == 1499 }?.text == "Note 1500", "a note far into the file")
+
+    // Reading doesn't count as a change: a save compares only what changed.
+    handle.pdf.page(at: 999)?.annotations.first { $0.type == "Text" }?.contents = "Edited note"
+    handle.state.isEdited = true
+    var prepared: DocumentBaseline.PreparedSave?
+    let save = mainThreadTime(runs: 3) { prepared = DocumentBaseline.prepareSave(of: handle) }
+    let outcome = prepared?.run()
+    check(outcome?.method == .appended, "the edit is appended: \(String(describing: outcome?.method)) \(outcome?.notes ?? [])")
+    if let data = outcome?.data, let model = try? PDFModel(data: data) {
+        let note = model.page(at: 999)?.annotations.first { $0["Subtype"]?.name == "Text" }
+        check(note?["Contents"]?.text == "Edited note" && note?["SuperPDFID"] == nil, "the edited note is saved without private keys")
+    } else {
+        check(false, "QPDF reads the save")
+    }
+    documents.subject.send(.closed(handle.id))
+    documents.openDocuments.removeAll { $0 === handle }
+
+    let times = String(format: "open to first page %.1f ms, background reading %.0f ms (longest slice %.1f ms), comments list %.1f ms, save %.1f ms on the main thread",
+                       open, reading, longestSlice, list, save)
+    #if DEBUG
+    print("  MarkupKit.performance (debug build, budgets not checked): \(times)")
+    #else
+    print("  MarkupKit.performance: \(times)")
+    check(open < 50, "a long file opens to its first page without MarkupKit reading it: \(times)")
+    check(longestSlice < 16, "background reading leaves the main thread free between slices: \(times)")
+    check(save < 16, "reading the pages doesn't make a save compare them: \(times)")
+    check(list < 50, "the comments list builds from what background reading found: \(times)")
+    #endif
 }

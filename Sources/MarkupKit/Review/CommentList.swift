@@ -80,7 +80,7 @@ enum CommentList {
         for index in 0..<document.pageCount {
             guard let page = document.pdf.page(at: index) else { continue }
             for annotation in page.annotations where AnnotationLedger.isMarkup(annotation) {
-                let id = AnnotationLedger.id(of: annotation)
+                let id = AnnotationLedger.key(of: annotation)
                 let date = annotation.modificationDate ?? .distantPast
                 if let parent = ledger[id].parent {
                     if isStatus(annotation) {
@@ -108,11 +108,33 @@ enum CommentList {
         }
     }
 
-    /// The words under text markup (and under a proofreading strike).
+    /// The words under text markup (and under a proofreading strike); kept while the markup stays where it is, so the
+    /// list builds without searching the text again (background reading finds them first, `cacheQuotes`).
     static func quotedText(of annotation: PDFAnnotation, on page: PDFPage) -> String? {
         guard AnnotationEditing.textMarkupTypes.contains(annotation.type ?? "") else { return nil }
         let points = (annotation.quadrilateralPoints ?? []).map { $0.pointValue }
         let origin = annotation.bounds.origin
+        if let quote = quotes.object(forKey: annotation), quote.points == points, quote.origin == origin { return quote.text }
+        let text = quotedText(points: points, origin: origin, on: page)
+        quotes.setObject(Quote(points: points, origin: origin, text: text), forKey: annotation)
+        return text
+    }
+
+    /// Finds the quoted words of the page's text markup ahead of the list.
+    static func cacheQuotes(on page: PDFPage) {
+        for annotation in page.annotations where AnnotationEditing.textMarkupTypes.contains(annotation.type ?? "") {
+            _ = quotedText(of: annotation, on: page)
+        }
+    }
+
+    private final class Quote {
+        let points: [CGPoint], origin: CGPoint, text: String?
+        init(points: [CGPoint], origin: CGPoint, text: String?) { self.points = points; self.origin = origin; self.text = text }
+    }
+
+    private static let quotes = NSMapTable<PDFAnnotation, Quote>(keyOptions: [.weakMemory, .objectPointerPersonality], valueOptions: .strongMemory)
+
+    private static func quotedText(points: [CGPoint], origin: CGPoint, on page: PDFPage) -> String? {
         var parts: [String] = []
         for start in stride(from: 0, to: points.count - 3, by: 4) {
             let quad = points[start..<start + 4].map { CGPoint(x: $0.x + origin.x, y: $0.y + origin.y) }
@@ -130,7 +152,7 @@ enum CommentList {
     static func annotation(_ id: String, in document: DocumentHandle) -> (PDFAnnotation, PDFPage)? {
         for index in 0..<document.pageCount {
             guard let page = document.pdf.page(at: index) else { continue }
-            if let match = page.annotations.first(where: { ($0.value(forAnnotationKey: .superPDFID) as? String) == id }) { return (match, page) }
+            if let match = page.annotations.first(where: { AnnotationLedger.existingID(of: $0) == id }) { return (match, page) }
         }
         return nil
     }

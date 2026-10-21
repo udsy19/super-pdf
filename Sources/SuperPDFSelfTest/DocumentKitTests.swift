@@ -1055,7 +1055,7 @@ private func documentKitSaveXMP() {
 
 /// A long document with markup on every page (2000 pages; a note with its popup, a highlight and an ink drawing on
 /// each, so 8000 PDFKit annotations) and a hundred bookmarks, as PDFKit writes one.
-private func performanceFixture(pages: Int) -> Data {
+func performanceFixture(pages: Int) -> Data {
     let data = NSMutableData()
     var box = CGRect(x: 0, y: 0, width: 612, height: 792)
     guard let consumer = CGDataConsumer(data: data as CFMutableData), let context = CGContext(consumer: consumer, mediaBox: &box, nil) else { return Data() }
@@ -1180,7 +1180,7 @@ private func documentKitSaveTracking() {
 
 /// Main-thread time of `body` in milliseconds, the best of `runs` (a loaded machine adds noise, never removes it).
 @MainActor
-private func mainThreadTime(runs: Int = 1, _ body: () -> Void) -> Double {
+func mainThreadTime(runs: Int = 1, _ body: () -> Void) -> Double {
     var best = Double.infinity
     for _ in 0..<runs {
         let start = DispatchTime.now().uptimeNanoseconds

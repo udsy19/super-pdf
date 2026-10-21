@@ -13,6 +13,8 @@ public final class MarkupService: Annotating {
     private var ledgers: [UUID: AnnotationLedger] = [:]
     private var sessions: [UUID: MarkupSession] = [:]
     private var scales: [UUID: [Int: MeasureScale]] = [:]
+    /// The PDFKit document each document's background reading covers (a swapped one is read again).
+    private var reading: [UUID: ObjectIdentifier] = [:]
     private var subscription: AnyCancellable?
 
     public init() {
@@ -25,29 +27,64 @@ public final class MarkupService: Annotating {
         switch event {
         case .opened(let id):
             guard let document = Services.documents?.openDocuments.first(where: { $0.id == id }) else { return }
-            _ = ledger(for: document)
-            // Markup can be clicked, moved and deleted at any time (Preview), so the layer goes over the page once the
-            // window shows it.
-            Task { @MainActor [weak self] in self?.session(for: document).attach() }
+            // Nothing is read here: a long file opens at once. Markup can be clicked, moved and deleted at any time
+            // (Preview), so the layer goes over the page once the window shows it, and the pages it shows are read.
+            Task { @MainActor [weak self] in
+                self?.session(for: document).attach()
+                self?.readInBackground(document)
+            }
         case .changed(let id):
             sessions[id]?.documentChanged()
+            if let document = sessions[id]?.document, reading[id] != ObjectIdentifier(document.pdf) { readInBackground(document) }
         case .closed(let id):
             sessions[id]?.detach()
             sessions[id] = nil
             ledgers[id] = nil
             scales[id] = nil
+            reading[id] = nil
         case .saved:
             break
         }
     }
 
-    /// The document's ledger, reading the file's annotations the first time.
+    /// The document's ledger; pages are read into it as they are shown, asked about or marked up.
     func ledger(for document: DocumentHandle) -> AnnotationLedger {
         if let ledger = ledgers[document.id] { return ledger }
         let ledger = AnnotationLedger()
         ledgers[document.id] = ledger
-        ledger.index(document)
         return ledger
+    }
+
+    /// How long one slice of background reading may take before the main thread handles events again.
+    static let readingSlice: Duration = .milliseconds(4)
+
+    /// Reads the pages nobody showed yet a few at a time on the main thread (PDFKit's pages and annotations belong to
+    /// it), yielding between slices, so the comments list is ready when it is asked for. Reading changes only replies (and
+    /// what they reply to), so it doesn't make saves compare the pages it read.
+    private func readInBackground(_ document: DocumentHandle) {
+        let pdf = ObjectIdentifier(document.pdf)
+        guard reading[document.id] != pdf else { return }
+        reading[document.id] = pdf
+        Task { @MainActor [weak self] in
+            var next = 0
+            while let self, self.reading[document.id] == pdf, ObjectIdentifier(document.pdf) == pdf, next < document.pageCount {
+                let ledger = self.ledger(for: document), clock = ContinuousClock(), start = clock.now
+                while next < document.pageCount, clock.now - start < Self.readingSlice {
+                    if let page = document.pdf.page(at: next) {
+                        ledger.read(page)
+                        CommentList.cacheQuotes(on: page)
+                    }
+                    next += 1
+                }
+                try? await Task.sleep(for: .milliseconds(1))
+            }
+        }
+    }
+
+    /// The pages the window shows were drawn: their file data is read (replies stop drawing as note icons).
+    func pagesShown(_ pages: [PDFPage], in document: DocumentHandle) {
+        let ledger = ledger(for: document)
+        pages.forEach(ledger.read)
     }
 
     /// The markup bar and page interaction of a document.
@@ -80,6 +117,7 @@ public final class MarkupService: Annotating {
     /// Puts annotations on their pages (with their ledger records) as one undo step; the edit is applied on return.
     func add(_ items: [(PDFAnnotation, PDFPage)], records: [String: LedgerRecord] = [:], named name: String, in document: DocumentHandle) -> UndoGroup {
         let ledger = ledger(for: document)
+        for (_, page) in items { ledger.prepare(page) }
         let put = {
             for (annotation, page) in items where !page.annotations.contains(where: { $0 === annotation }) { page.addAnnotation(annotation) }
             for (id, record) in records { ledger[id] = record }
@@ -94,10 +132,25 @@ public final class MarkupService: Annotating {
 
     // MARK: Comments review (features #77)
 
-    public func comments(in document: DocumentHandle) -> [CommentItem] { CommentList.items(in: document, ledger: ledger(for: document)) }
+    public func comments(in document: DocumentHandle) -> [CommentItem] { CommentList.items(in: document, ledger: readLedger(for: document)) }
+
+    /// The ledger with every page read (what the comments list, exports and summaries need).
+    private func readLedger(for document: DocumentHandle) -> AnnotationLedger {
+        let ledger = ledger(for: document)
+        ledger.readAll(document)
+        return ledger
+    }
+
+    /// The annotation a comment id names, its page prepared for a change.
+    private func target(_ id: String, in document: DocumentHandle) -> (PDFAnnotation, PDFPage)? {
+        let ledger = readLedger(for: document)
+        guard let (annotation, page) = CommentList.annotation(id, in: document) else { return nil }
+        ledger.prepare(page)
+        return (annotation, page)
+    }
 
     public func reply(to comment: CommentItem, text: String, in document: DocumentHandle) -> UndoGroup {
-        guard let (parent, page) = CommentList.annotation(comment.id, in: document) else { return UndoGroup("Reply", undo: {}, redo: {}) }
+        guard let (parent, page) = target(comment.id, in: document) else { return UndoGroup("Reply", undo: {}, redo: {}) }
         let reply = AnnotationFactory.note(at: CGPoint(x: parent.bounds.minX, y: parent.bounds.maxY), text: text, color: .noteYellow, author: authorName)
         reply.iconType = .comment
         reply.shouldDisplay = false
@@ -107,7 +160,7 @@ public final class MarkupService: Annotating {
     }
 
     public func setStatus(_ status: ReviewStatus, of comment: CommentItem, in document: DocumentHandle) -> UndoGroup {
-        guard let (parent, page) = CommentList.annotation(comment.id, in: document) else { return UndoGroup("Set Status", undo: {}, redo: {}) }
+        guard let (parent, page) = target(comment.id, in: document) else { return UndoGroup("Set Status", undo: {}, redo: {}) }
         let author = authorName
         let state = CommentList.state(for: status)
         let marker = AnnotationFactory.note(at: CGPoint(x: parent.bounds.minX, y: parent.bounds.maxY), text: "\(state) set by \(author)",
@@ -121,7 +174,7 @@ public final class MarkupService: Annotating {
     }
 
     public func exportComments(from document: DocumentHandle, as format: CommentFormat, to destination: URL) throws {
-        let ledger = ledger(for: document)
+        let ledger = readLedger(for: document)
         let data = switch format {
         case .xfdf: CommentExchange.xfdf(of: document, ledger: ledger)
         case .fdf: CommentExchange.fdf(of: document, ledger: ledger)
@@ -132,7 +185,7 @@ public final class MarkupService: Annotating {
 
     public func importComments(from file: URL, into document: DocumentHandle) throws -> UndoGroup {
         guard ["xfdf", "xml"].contains(file.pathExtension.lowercased()) else { throw CommentExchangeError.unsupported }
-        let ledger = ledger(for: document)
+        let ledger = readLedger(for: document)
         let before = ledger.records
         let added = try CommentExchange.importXFDF(try Data(contentsOf: file), into: document, ledger: ledger)
         let records = ledger.records.filter { before[$0.key] != $0.value }
@@ -164,6 +217,7 @@ public final class MarkupService: Annotating {
     /// Every measurement on the page in the new scale.
     private func relabel(_ document: DocumentHandle, page index: Int, scale: MeasureScale) {
         guard let page = document.pdf.page(at: index) else { return }
+        ledger(for: document).prepare(page)
         for annotation in page.annotations {
             guard let kind = Measure.kind(of: annotation) else { continue }
             let drawn = AnnotationEditing.editable(annotation, on: page) as? DrawnAnnotation
@@ -240,13 +294,15 @@ public final class MarkupService: Annotating {
 
     /// The file or voice note a paper clip or speaker holds.
     func attachment(of annotation: PDFAnnotation, in document: DocumentHandle) -> LedgerRecord {
-        ledger(for: document)[AnnotationLedger.id(of: annotation)]
+        let ledger = ledger(for: document)
+        if let page = annotation.page { ledger.read(page) }
+        return ledger[AnnotationLedger.key(of: annotation)]
     }
 
     // MARK: Saving
 
     public func annotationRestorer(for document: DocumentHandle) -> AnnotationRestorer? {
-        ledgers[document.id]?.restorer(for: document)
+        ledgers[document.id]?.restorer
     }
 }
 
