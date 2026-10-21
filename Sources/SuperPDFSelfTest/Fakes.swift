@@ -404,10 +404,11 @@ final class FakeForms: FormServicing {
     }
 
     func importData(from file: URL, into document: DocumentHandle) throws -> UndoGroup { noUndo("Import Form Data") }
-    func exportData(from document: DocumentHandle, as format: FormDataFormat, to destination: URL) throws {
+    func exportData(from document: DocumentHandle, as format: FormDataFormat, to destination: URL) async throws {
         try JSONEncoder().encode(formFields).write(to: destination)
     }
     func isXFA(_ document: DocumentHandle) -> Bool { false }
+    func formRestorer(for document: DocumentHandle) -> (@Sendable (Data) throws -> Data)? { nil }
     func detectFields(in document: DocumentHandle, pages: [Int]) async throws -> [FormField] { [] }
     func add(_ fields: [FormField], to document: DocumentHandle) throws -> UndoGroup { formFields += fields; return noUndo("Add Fields") }
 

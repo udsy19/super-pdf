@@ -309,8 +309,10 @@ struct PendingWrite: @unchecked Sendable {
     let unchangedFile: URL?
     let password: String?
     let pageCount: Int
-    /// Puts back the annotation data PDFKit drops when it writes (MarkupKit: names, reply links, attached files).
+    /// Put back what PDFKit drops when it writes: annotation data (MarkupKit: names, reply links, attached files) and
+    /// form data (FormsKit: field scripts, calculation order).
     let restoreAnnotations: (@Sendable (Data) throws -> Data)?
+    let restoreForms: (@Sendable (Data) throws -> Data)?
 
     @MainActor
     init(handle: DocumentHandle, isEdited: Bool, file: URL?) {
@@ -319,6 +321,7 @@ struct PendingWrite: @unchecked Sendable {
         password = handle.password
         pageCount = handle.pdf.pageCount
         restoreAnnotations = unchangedFile == nil ? Services.markup?.annotationRestorer(for: handle) : nil
+        restoreForms = unchangedFile == nil ? Services.forms?.formRestorer(for: handle) : nil
     }
 
     /// Writes to `url` (NSDocument's temporary file for safe saves) and reads it back before NSDocument replaces
@@ -329,8 +332,9 @@ struct PendingWrite: @unchecked Sendable {
             try FileManager.default.copyItem(at: unchangedFile, to: url)   // fails rather than replace anything
         } else {
             guard pdf.write(to: url) else { throw DocumentError.writeCheckFailed }
-            // A restore that fails leaves PDFKit's file as it is: the save still happens.
-            if let restoreAnnotations, let written = try? Data(contentsOf: url), let restored = try? restoreAnnotations(written) {
+            // A restore that fails leaves the file as it was before it: the save still happens.
+            for restore in [restoreAnnotations, restoreForms].compactMap({ $0 }) {
+                guard let written = try? Data(contentsOf: url), let restored = try? restore(written) else { continue }
                 try restored.write(to: url)
             }
         }
