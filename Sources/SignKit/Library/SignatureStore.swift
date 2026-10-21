@@ -69,7 +69,7 @@ final class SignatureStore {
     func save(_ signature: SavedSignature) throws {
         let plain = try JSONEncoder().encode(signature)
         guard let sealed = try AES.GCM.seal(plain, using: try keys.key()).combined else { throw CocoaError(.fileWriteUnknown) }
-        try sealed.write(to: url(of: signature.id), options: [.atomic, .completeFileProtection])
+        try sealed.write(to: url(of: signature.id), options: [.atomic])
         var list = all.filter { $0.id != signature.id }
         list.append(signature)
         loaded = list
