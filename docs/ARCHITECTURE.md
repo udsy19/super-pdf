@@ -173,14 +173,19 @@ What `SuperPDFCore` actually declares, where it differs from or adds to the tabl
   optional content, transitions, named destinations, JavaScript, annotation names and reply links, form scripts, app
   keys and marked content). So a document's authoritative bytes are what it was read from, or what the last engine edit
   (`.contents` result, and its undo) made: `DocumentHandle.contents`, DocumentKit's `DocumentBaseline`, which also
-  records what PDFKit showed for them (pages, rotation and boxes, annotation fingerprints, outline, attributes). A save
-  or snapshot writes only the PDFKit-level differences into those bytes with QPDF (`StructureMerge`): page order,
-  rotation, boxes, inserted and removed pages, annotations added, changed (PDFKit's keys merged over the file's
-  dictionary, unknown keys kept) and removed, form values, the outline, the attributes. It appends an incremental update
-  when it can (unencrypted, not rebuilt, no page removed) and rewrites the file with QPDF otherwise; PDFKit writes the
-  whole file only when its document can't be paired with the bytes, and the log says why. MarkupKit's
-  `annotationRestorer` puts back the data PDFKit can't hold into the annotations a save took from PDFKit (new or
-  changed ones); FormsKit needs no restorer.
+  records what PDFKit showed for them (a page's rotation, boxes and annotations, the outline, the attributes). Nothing is
+  read at open: the PDFKit documents DocumentKit opens report a change before it happens (`ChangeTracking`: page
+  insertions, removals and moves; PDFKit makes their pages and annotations instances that report from their setters),
+  and the baseline records a page the first time something could change it; a save compares only those pages and has
+  PDFKit write only the pages whose annotations changed. So modules change annotations through their setters or
+  `setValue(_:forAnnotationKey:)` (a border, action, destination or path changed in place counts too) and never set
+  the delegate of a document DocumentKit opened. A save or snapshot writes only the PDFKit-level differences into those
+  bytes with QPDF (`StructureMerge`), off the main thread: page order, rotation, boxes, inserted and removed pages,
+  annotations added, changed (PDFKit's keys merged over the file's dictionary, unknown keys kept) and removed, form
+  values, the outline, the attributes. It appends an incremental update when it can (unencrypted, not rebuilt, no page
+  removed) and rewrites the file with QPDF otherwise; PDFKit writes the whole file only when its document can't be
+  paired with the bytes, and the log says why. MarkupKit's `annotationRestorer` puts back the data PDFKit can't hold
+  into the annotations a save took from PDFKit (new or changed ones); FormsKit needs no restorer.
 - **Catalog.** 52 tiles (ux §4.1's rows; its old "54" was a miscount before the AI tiles went). Each tile has an
   `owner` module and `needsDocument`. Owners where no work package named the feature: Contents and Read aloud →
   ViewerKit, Compare files → FixKit. Read aloud sits in Fix & check next to Check accessibility (the Understand section

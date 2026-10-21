@@ -80,7 +80,7 @@ public final class PDFFileDocument: NSDocument, MenuCommandResponding {
 
     override public nonisolated func read(from url: URL, ofType typeName: String) throws {
         try MainActor.assumeIsolated {
-            guard let pdf = PDFDocument(url: url) else { throw DocumentError.damaged(url.lastPathComponent) }
+            guard let pdf = DocumentBaseline.document(url: url) else { throw DocumentError.damaged(url.lastPathComponent) }
             if pdf.isLocked {
                 guard let password = handle?.password ?? manager?.knownPassword(for: fileURL ?? url),
                       pdf.unlock(withPassword: password) else { throw CocoaError(.userCancelled) }
@@ -319,7 +319,7 @@ struct PendingWrite: @unchecked Sendable {
         unchangedFile = !isEdited && !handle.state.wasRepaired ? file : nil
         password = handle.password
         pageCount = handle.pdf.pageCount
-        job = SaveJob(handle, baseline: handle.contents as? DocumentBaseline)
+        job = SaveJob(handle)
     }
 
     /// Writes to `url` (NSDocument's temporary file for safe saves) and reads it back before NSDocument replaces
@@ -329,7 +329,9 @@ struct PendingWrite: @unchecked Sendable {
             guard unchangedFile.standardizedFileURL != url.standardizedFileURL else { return }
             try FileManager.default.copyItem(at: unchangedFile, to: url)   // fails rather than replace anything
         } else {
-            try job.run().data.write(to: url)
+            let outcome = job.outcome()
+            guard outcome.isWritten else { throw CocoaError(.fileWriteUnknown) }
+            try outcome.data.write(to: url)
         }
         guard let check = PDFDocument(url: url) else { throw DocumentError.writeCheckFailed }
         if check.isLocked, !(password.map(check.unlock(withPassword:)) ?? false) { throw DocumentError.writeCheckFailed }

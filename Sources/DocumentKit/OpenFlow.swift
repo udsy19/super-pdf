@@ -51,7 +51,7 @@ struct DocumentLoader {
 
     /// `contents` is what to read (the file, or its autosaved contents); `fileName` is what people see.
     func load(_ contents: URL, fileName: String) async throws -> LoadedPDF {
-        if let pdf = PDFDocument(url: contents) {
+        if let pdf = DocumentBaseline.document(url: contents) {
             let password = try await unlock(pdf, fileName: fileName)
             return LoadedPDF(pdf: pdf, file: contents, password: password, wasRepaired: false)
         }
@@ -67,7 +67,7 @@ struct DocumentLoader {
         let folder = SuperPDFPaths.ensure(workFolder().appendingPathComponent(UUID().uuidString, isDirectory: true))
         let repaired = folder.appendingPathComponent(fileName)
         _ = try await repairer.repair(.file(contents), embedFonts: false, to: repaired)
-        guard let pdf = PDFDocument(url: repaired) else { throw DocumentError.damaged(fileName) }
+        guard let pdf = DocumentBaseline.document(url: repaired) else { throw DocumentError.damaged(fileName) }
         let password = try await unlock(pdf, fileName: fileName)
         return LoadedPDF(pdf: pdf, file: repaired, password: password, wasRepaired: true)
     }

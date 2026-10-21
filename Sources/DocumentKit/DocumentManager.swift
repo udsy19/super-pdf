@@ -108,7 +108,7 @@ public final class DocumentManager: DocumentManaging {
 
     @discardableResult
     public func openUntitled(_ data: Data, name: String) throws -> DocumentHandle {
-        guard let pdf = PDFDocument(data: data) else { throw DocumentError.damaged(name) }
+        guard let pdf = DocumentBaseline.document(data: data) else { throw DocumentError.damaged(name) }
         return openUntitled(pdf, name: name, beside: nil, bytes: data)
     }
 
@@ -129,7 +129,7 @@ public final class DocumentManager: DocumentManaging {
         let folder = SuperPDFPaths.ensure(SuperPDFPaths.work.appendingPathComponent(UUID().uuidString, isDirectory: true))
         let result = try await convert.convert(ConversionJob(inputs: [url], output: .pdf, destination: folder.appendingPathComponent(base + ".pdf")),
                                                progress: .ignored)
-        guard let output = result.outputs.first, let pdf = PDFDocument(url: output) else { throw DocumentError.damaged(url.lastPathComponent) }
+        guard let output = result.outputs.first, let pdf = DocumentBaseline.document(url: output) else { throw DocumentError.damaged(url.lastPathComponent) }
         return openUntitled(pdf, name: base, beside: nil, bytes: try? Data(contentsOf: output))
     }
 
@@ -243,7 +243,7 @@ public final class DocumentManager: DocumentManaging {
             if let source = request.document { Services.viewer?.showBanner(Self.banner(banner, placedAt: folder, planned: planned), in: source) }
 
         case .newDocument(let data, let name, let banner):
-            guard let pdf = PDFDocument(data: data) else { throw DocumentError.damaged(name) }
+            guard let pdf = DocumentBaseline.document(data: data) else { throw DocumentError.damaged(name) }
             let handle = openUntitled(pdf, name: name, beside: request.document, bytes: data)
             if let banner { Services.viewer?.showBanner(banner, in: handle) }
 
@@ -299,7 +299,7 @@ public final class DocumentManager: DocumentManaging {
     }
 
     private func swapContents(of handle: DocumentHandle, to data: Data) {
-        guard let pdf = PDFDocument(data: data) else { return }
+        guard let pdf = DocumentBaseline.document(data: data) else { return }
         if pdf.isLocked, let password = handle.password { pdf.unlock(withPassword: password) }
         replaceContents(of: handle, with: pdf, bytes: data)
     }

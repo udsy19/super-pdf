@@ -27,67 +27,62 @@ public struct SaveOutcome: Sendable {
 }
 
 /// A save captured on the main actor and run off it (at once for a snapshot): the authoritative bytes, the plan of what
-/// changed through PDFKit, and a private copy of PDFKit's document for the parts PDFKit must write.
+/// changed through PDFKit, and a document of its own with the pages PDFKit must write for it. Nothing here copies the
+/// whole of PDFKit's document unless the changes can't be written into the file.
 struct SaveJob: @unchecked Sendable {
     private let base: Data?
     private let password: String?
     private let plan: SavePlan?
-    private let reason: String?
-    /// PDFKit's copy, stamped when the plan needs its output. Nil when nothing changed.
-    private let copy: PDFDocument?
+    private let outline: OriginalOutline?
+    /// The pages PDFKit writes for the plan (`SavePlan.outputPages`), stamped; or, without bytes, all of PDFKit's document.
+    private let output: PDFDocument?
     private let restorer: AnnotationRestorer?
+    /// PDFKit's document, for the rare save it must write whole.
+    private let live: LiveDocument
 
     @MainActor
-    init(_ document: DocumentHandle, baseline: DocumentBaseline?) {
+    init(_ document: DocumentHandle) {
         let restorer = Services.markup?.annotationRestorer(for: document)
-        self.restorer = restorer
-        password = document.password
-        if let baseline {
-            let (plan, reason) = baseline.plan(for: document.pdf, restorerKey: restorer?.idKey)
-            base = baseline.bytes
-            self.plan = plan
-            self.reason = reason
+        if let baseline = document.contents as? DocumentBaseline {
+            self.init(document, baseline: baseline, prepared: baseline.prepare(document.pdf, restorerKey: restorer?.idKey), restorer: restorer)
         } else {
-            base = nil
-            plan = nil
-            reason = "the document has no file bytes to keep"
-        }
-        if let plan, plan.isEmpty {
-            copy = nil
-        } else if plan?.needsOutput == true {
-            copy = Self.stampedCopy(of: document.pdf)
-        } else {
-            copy = document.pdf.copy() as? PDFDocument
+            let live = LiveDocument(document.pdf)
+            self.init(base: nil, password: document.password, plan: nil, outline: nil, output: live.copy(), restorer: restorer, live: live)
         }
     }
 
-    /// A copy of `pdf` whose annotations carry their place ("page/index") under `saveStampKey`; `pdf` is left as it was.
     @MainActor
-    private static func stampedCopy(of pdf: PDFDocument) -> PDFDocument? {
-        let key = PDFAnnotationKey(rawValue: "/" + saveStampKey)
-        var stamped: [PDFAnnotation] = []
-        for index in 0..<pdf.pageCount {
-            for (j, annotation) in (pdf.page(at: index)?.annotations ?? []).enumerated() {
-                annotation.setValue("\(index)/\(j)", forAnnotationKey: key)
-                stamped.append(annotation)
-            }
-        }
-        let copy = pdf.copy() as? PDFDocument
-        for annotation in stamped { annotation.removeValue(forAnnotationKey: key) }
-        return copy
+    init(_ document: DocumentHandle, baseline: DocumentBaseline, prepared: PreparedPlan, restorer: AnnotationRestorer?) {
+        self.init(base: baseline.bytes, password: document.password, plan: prepared.plan, outline: prepared.outline,
+                  output: baseline.output(of: document.pdf, for: prepared.plan), restorer: restorer, live: LiveDocument(document.pdf))
     }
 
-    func run() -> SaveOutcome {
-        var reason = reason
-        if let base, let plan {
+    private init(base: Data?, password: String?, plan: SavePlan?, outline: OriginalOutline?, output: PDFDocument?, restorer: AnnotationRestorer?,
+                 live: LiveDocument) {
+        self.base = base
+        self.password = password
+        self.plan = plan
+        self.outline = outline
+        self.output = output
+        self.restorer = restorer
+        self.live = live
+    }
+
+    /// What the save writes. Off the main actor a whole-file PDFKit write (when the changes can't be written into the
+    /// file) asks the main thread for PDFKit's document; one that can't be had in time writes the file as it was and
+    /// says so (`notes`), which `PendingWrite` refuses.
+    func outcome() -> SaveOutcome {
+        var reason = "the document has no file bytes to keep"
+        if let base, var plan {
+            if let outline, outline.key() != plan.liveOutlineKey { plan.outline = plan.liveOutline }
             if plan.isEmpty { return SaveOutcome(data: base, method: .unchanged, notes: []) }
             do {
-                var output: Data?
-                if plan.needsOutput {
-                    guard let written = copy?.dataRepresentation() else { throw PDFModelError.failed("PDFKit wrote nothing") }
-                    output = written
+                var written: Data?
+                if !plan.outputPages.isEmpty {
+                    guard let data = output?.dataRepresentation() else { throw PDFModelError.failed("PDFKit wrote nothing") }
+                    written = data
                 }
-                var merge = try StructureMerge(plan: plan, base: base, password: password, output: output, restorer: restorer)
+                var merge = try StructureMerge(plan: plan, base: base, password: password, output: written, restorer: restorer)
                 let (data, method) = try merge.run()
                 for note in merge.notes { Log.documents.notice("Save: \(note, privacy: .public)") }
                 return SaveOutcome(data: data, method: method, notes: merge.notes)
@@ -95,11 +90,48 @@ struct SaveJob: @unchecked Sendable {
                 reason = "the changes couldn't be written into the file: \(error)"
             }
         }
-        let why = reason ?? "unknown"
-        Log.documents.notice("Save: PDFKit writes the whole file because \(why, privacy: .public)")
-        let data = copy.flatMap { StructureMerge.pdfKitOnly($0, password: password, restorer: restorer) } ?? base ?? Data()
-        return SaveOutcome(data: data, method: .pdfKit, notes: [why])
+        Log.documents.notice("Save: PDFKit writes the whole file because \(reason, privacy: .public)")
+        let whole = plan == nil ? output : live.copy()
+        guard let whole, let data = StructureMerge.pdfKitOnly(whole, password: password, restorer: restorer) else {
+            return SaveOutcome(data: base ?? Data(), method: .pdfKit, notes: [reason, SaveOutcome.notWritten])
+        }
+        return SaveOutcome(data: data, method: .pdfKit, notes: [reason])
     }
+}
+
+extension SaveOutcome {
+    /// The note of a save that couldn't write the changes at all (its data is the file as it was).
+    static let notWritten = "PDFKit's document couldn't be written"
+
+    var isWritten: Bool { !notes.contains(Self.notWritten) }
+}
+
+/// PDFKit's document, copied whole on the main thread when a save needs it (from any thread).
+final class LiveDocument: @unchecked Sendable {
+    private weak var pdf: PDFDocument?
+
+    init(_ pdf: PDFDocument) { self.pdf = pdf }
+
+    func copy() -> PDFDocument? {
+        let copy = { @MainActor [weak self] () -> PDFDocument? in
+            guard let pdf = self?.pdf else { return nil }
+            let tracker = (pdf as? TrackedDocument)?.tracker
+            return tracker.map { $0.muting { pdf.copy() as? PDFDocument } } ?? pdf.copy() as? PDFDocument
+        }
+        if Thread.isMainThread { return MainActor.assumeIsolated { copy() } }
+        // NSDocument writes on its own thread with the main thread free; waiting is bounded so a main thread that is
+        // itself waiting for the write can't hang it.
+        let box = CopyBox()
+        let done = DispatchSemaphore(value: 0)
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated { box.document = copy() }
+            done.signal()
+        }
+        guard done.wait(timeout: .now() + 30) == .success else { return nil }
+        return box.document
+    }
+
+    private final class CopyBox: @unchecked Sendable { var document: PDFDocument? }
 }
 
 /// Writes a save plan into the authoritative bytes (off the main actor). Objects of PDFKit's output are brought over by
@@ -120,12 +152,6 @@ struct StructureMerge {
             if let plain = try? PDFModel(data: data) { return plain }
             return try PDFModel(data: data, password: password)
         }
-    }
-
-    /// The /Annots subtypes of every page ("" for entries that aren't annotations), to pair with PDFKit's.
-    static func annotationSubtypes(of bytes: Data, password: String?) throws -> [[String]] {
-        let model = try PDFModel(data: bytes, password: password)
-        return model.pages.map { page in page.annotations.map { $0["Subtype"]?.name ?? "" } }
     }
 
     // MARK: Running
@@ -152,16 +178,31 @@ struct StructureMerge {
             return model.makeIndirect(.dictionary(["Type": .name("Page")]))
         }
         if let importer {
-            for (index, page) in outputPages.enumerated() where index < finalPages.count { importer.map(page.object, to: finalPages[index]) }
+            for (k, page) in outputPages.enumerated() where k < plan.outputPages.count && plan.outputPages[k] < finalPages.count {
+                importer.map(page.object, to: finalPages[plan.outputPages[k]])
+            }
+        }
+
+        // Which of the file's /Annots entries each of PDFKit's annotations was, for the pages whose annotations matter.
+        var pairings: [Int: AnnotationPairing?] = [:]
+        func pairing(_ index: Int) -> AnnotationPairing? {
+            if let known = pairings[index] { return known }
+            let entry = plan.pages[index]
+            let made = entry.source.flatMap { source in
+                AnnotationPairing(pdfKit: entry.pdfKitTypes, file: filePages[source].annotations.map { $0["Subtype"]?.name ?? "" })
+            }
+            pairings[index] = made
+            return made
         }
 
         // Every annotation's object in the result, mapped from PDFKit's output first so references between them resolve.
         var finalAnnotations: [[PDFObject]] = Array(repeating: [], count: plan.pages.count)
         var byPlace: [String: PDFObject] = [:]
-        var fromPDFKit: [(object: PDFObject, source: PDFObject, merge: Bool, page: Int)] = []
+        var fromPDFKit: [(object: PDFObject, source: PDFObject, merge: Bool, page: Int, live: Int?)] = []
         for (index, entry) in plan.pages.enumerated() {
             let fileAnnotations = entry.source.map { filePages[$0].annotations } ?? []
-            let planned = entry.annotations ?? fileAnnotations.indices.map { PlannedAnnotation(kind: .keep($0), live: nil) }
+            let planned = resolved(entry, page: index, pairing: entry.annotations == nil || entry.source == nil ? nil : pairing(index))
+                ?? fileAnnotations.indices.map { PlannedAnnotation(kind: .keep($0), live: nil) }
             var objects: [PDFObject] = []
             for item in planned {
                 let place = item.live.map { "\(index)/\($0)" }
@@ -174,7 +215,7 @@ struct StructureMerge {
                     object = fileAnnotations[file]
                     if let place, let source = stamped[place] {
                         importer?.map(source, to: fileAnnotations[file])
-                        fromPDFKit.append((fileAnnotations[file], source, true, index))
+                        fromPDFKit.append((fileAnnotations[file], source, true, index, item.live))
                     } else {
                         notes.append("page \(index + 1): PDFKit didn't write a changed annotation; the file's is kept")
                     }
@@ -185,7 +226,7 @@ struct StructureMerge {
                     }
                     let made = model.makeIndirect(.dictionary([:]))
                     importer?.map(source, to: made)
-                    fromPDFKit.append((made, source, false, index))
+                    fromPDFKit.append((made, source, false, index, item.live))
                     object = made
                 }
                 guard let object else { continue }
@@ -219,6 +260,10 @@ struct StructureMerge {
                     item.object.set(key, importer.value(value))
                 }
                 if let page = finalPages[item.page].reference { item.object.set("P", page) }
+            }
+            // A link to a page PDFKit didn't write leads to that page of the result.
+            if let live = item.live, let target = plan.pages[item.page].targets[live], let page = finalPages[target].reference {
+                Self.retarget(item.object, to: page)
             }
         }
 
@@ -278,9 +323,18 @@ struct StructureMerge {
             let fromPDFKitIDs = Set(fromPDFKit.compactMap(\.object.objectID))
             for (index, entry) in plan.pages.enumerated() {
                 for (j, id) in entry.ids.enumerated() {
-                    guard let id, let object = byPlace["\(index)/\(j)"] ?? keptObject(entry, live: j, filePages) else { continue }
+                    guard let id, let object = byPlace["\(index)/\(j)"] ?? keptObject(entry, live: j, filePages, pairing(index)) else { continue }
                     named[id] = object
                     if let objectID = object.objectID, fromPDFKitIDs.contains(objectID) { written.insert(id) }
+                }
+            }
+            // Pages nobody changed weren't read from PDFKit: their annotations answer to their names in the file (a new
+            // reply's note may be on one).
+            if !written.isEmpty {
+                for (index, entry) in plan.pages.enumerated() where entry.annotations == nil && entry.ids.isEmpty {
+                    for annotation in finalPages[index]["Annots"]?.items ?? [] {
+                        if let name = annotation["NM"]?.text, named[name] == nil { named[name] = annotation }
+                    }
                 }
             }
             try restorer.restore(model, named, written)
@@ -298,10 +352,55 @@ struct StructureMerge {
     }
 
     /// The file's object for PDFKit's `live`-th annotation on a page whose /Annots are kept as they are.
-    private func keptObject(_ entry: PlannedPage, live: Int, _ filePages: [PDFModelKit.PDFPage]) -> PDFObject? {
-        guard entry.annotations == nil, let source = entry.source, entry.liveFile.indices.contains(live), let file = entry.liveFile[live] else { return nil }
+    private func keptObject(_ entry: PlannedPage, live: Int, _ filePages: [PDFModelKit.PDFPage], _ pairing: AnnotationPairing?) -> PDFObject? {
+        guard entry.annotations == nil, let source = entry.source, let pairing, entry.liveOriginal.indices.contains(live),
+              let original = entry.liveOriginal[live], pairing.fileIndex.indices.contains(original), let file = pairing.fileIndex[original] else { return nil }
         let annotations = filePages[source].annotations
         return annotations.indices.contains(file) ? annotations[file] : nil
+    }
+
+    /// The page's planned annotations with PDFKit's annotations as the page had them resolved to the file's /Annots
+    /// entries: unchanged ones are the file's objects, changed ones merge into them, and the entries PDFKit doesn't show
+    /// stay. Nil keeps the file's /Annots.
+    private mutating func resolved(_ entry: PlannedPage, page index: Int, pairing: AnnotationPairing?) -> [PlannedAnnotation]? {
+        guard let planned = entry.annotations else { return nil }
+        guard entry.source != nil else { return planned }
+        guard let pairing else {
+            // The file's /Annots can't be told apart: PDFKit's whole list replaces them.
+            notes.append("page \(index + 1): annotations written from PDFKit (they couldn't be paired with the file's)")
+            return planned.compactMap { $0.live.map { PlannedAnnotation(kind: .add, live: $0) } }
+        }
+        var result: [PlannedAnnotation] = []
+        for item in planned {
+            switch item.kind {
+            case .add:
+                result.append(item)
+            case .keep(let original):
+                // An unchanged annotation PDFKit made (a popup) isn't written.
+                guard pairing.fileIndex.indices.contains(original), let file = pairing.fileIndex[original] else { continue }
+                result.append(PlannedAnnotation(kind: .keep(file), live: item.live))
+            case .merge(let original):
+                if pairing.fileIndex.indices.contains(original), let file = pairing.fileIndex[original] {
+                    result.append(PlannedAnnotation(kind: .merge(file), live: item.live))
+                } else {
+                    result.append(PlannedAnnotation(kind: .add, live: item.live))   // PDFKit made it (a popup) and it changed since
+                }
+            }
+        }
+        return result + pairing.hidden.map { PlannedAnnotation(kind: .keep($0), live: nil) }
+    }
+
+    /// Points the destination of `annotation` (its /Dest, or its GoTo action's /D) at `page`; named destinations stay.
+    private static func retarget(_ annotation: PDFObject, to page: PDFValue) {
+        func retargeted(_ array: PDFObject) -> PDFValue {
+            var items = array.value.arrayValue ?? []
+            if items.isEmpty { items = [page, .name("Fit")] } else { items[0] = page }
+            return .array(items)
+        }
+        if let destination = annotation["Dest"], destination.type == .array { annotation.set("Dest", retargeted(destination)) }
+        if let action = annotation["A"], action["S"]?.name == "GoTo", let destination = action["D"], destination.type == .array {
+            action.set("D", retargeted(destination))
+        }
     }
 
     // MARK: Annotations

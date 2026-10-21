@@ -15,7 +15,7 @@ import UniformTypeIdentifiers
 /// structure (`DocumentBaseline`). Module tests that save use it.
 @MainActor
 func openedHandle(_ url: URL, state: DocumentState = DocumentState()) -> DocumentHandle {
-    let handle = DocumentHandle(url: url, pdf: PDFDocument(url: url)!, state: state, undoManager: makeUndoManager())
+    let handle = DocumentHandle(url: url, pdf: DocumentBaseline.document(url: url)!, state: state, undoManager: makeUndoManager())
     if let bytes = try? Data(contentsOf: url) { DocumentBaseline.attach(bytes, to: handle) }
     return handle
 }
@@ -36,6 +36,8 @@ func registerDocumentKitTests() {
     SelfTest.cases.append(("DocumentKit.saveFidelityPageInserted", { documentKitSaveFidelityPageInserted() }))
     SelfTest.cases.append(("DocumentKit.saveRemovedPagePrivacy", { documentKitSaveRemovedPagePrivacy() }))
     SelfTest.cases.append(("DocumentKit.saveXMP", { documentKitSaveXMP() }))
+    SelfTest.cases.append(("DocumentKit.saveTracking", { documentKitSaveTracking() }))
+    SelfTest.cases.append(("DocumentKit.performance", { documentKitPerformance() }))
 }
 
 // MARK: - Fixtures
@@ -1047,4 +1049,222 @@ private func documentKitSaveXMP() {
     let (_, added) = packet(DocumentBaseline.saveOutcome(of: third).data)
     check(added.contains("xmlns:dc=\"http://purl.org/dc/elements/1.1/\"><dc:title><rdf:Alt><rdf:li xml:lang=\"x-default\">Retitled</rdf:li></rdf:Alt></dc:title>")
           && added.contains("<superpdf:fixture>kept</superpdf:fixture>"), "a packet without the property gets it: \(added)")
+}
+
+// MARK: - Performance
+
+/// A long document with markup on every page (2000 pages; a note with its popup, a highlight and an ink drawing on
+/// each, so 8000 PDFKit annotations) and a hundred bookmarks, as PDFKit writes one.
+private func performanceFixture(pages: Int) -> Data {
+    let data = NSMutableData()
+    var box = CGRect(x: 0, y: 0, width: 612, height: 792)
+    guard let consumer = CGDataConsumer(data: data as CFMutableData), let context = CGContext(consumer: consumer, mediaBox: &box, nil) else { return Data() }
+    for index in 0..<pages {
+        context.beginPDFPage(nil)
+        NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
+        ("Page \(index + 1): the quick brown fox jumps over the lazy dog" as NSString).draw(at: CGPoint(x: 72, y: 700), withAttributes: [.font: NSFont.systemFont(ofSize: 12)])
+        NSGraphicsContext.current = nil
+        context.endPDFPage()
+    }
+    context.closePDF()
+    guard let pdf = PDFDocument(data: data as Data) else { return Data() }
+    for index in 0..<pdf.pageCount {
+        guard let page = pdf.page(at: index) else { continue }
+        let note = PDFAnnotation(bounds: CGRect(x: 72, y: 600, width: 20, height: 20), forType: .text, withProperties: nil)
+        note.contents = "Note \(index + 1)"
+        note.color = .systemYellow
+        page.addAnnotation(note)
+        let highlight = PDFAnnotation(bounds: CGRect(x: 72, y: 698, width: 120, height: 14), forType: .highlight, withProperties: nil)
+        highlight.quadrilateralPoints = [NSValue(point: CGPoint(x: 0, y: 14)), NSValue(point: CGPoint(x: 120, y: 14)), NSValue(point: .zero), NSValue(point: CGPoint(x: 120, y: 0))]
+        highlight.color = .systemYellow
+        page.addAnnotation(highlight)
+        let ink = PDFAnnotation(bounds: CGRect(x: 100, y: 100, width: 200, height: 200), forType: .ink, withProperties: nil)
+        let path = NSBezierPath()
+        path.move(to: CGPoint(x: 10, y: 10)); path.line(to: CGPoint(x: 150, y: 120)); path.line(to: CGPoint(x: 60, y: 180))
+        ink.add(path)
+        ink.color = .systemBlue
+        page.addAnnotation(ink)
+    }
+    let outline = PDFOutline()
+    for index in 0..<100 {
+        let item = PDFOutline()
+        item.label = "Chapter \(index + 1)"
+        if let page = pdf.page(at: index * pages / 100) { item.destination = PDFKit.PDFDestination(page: page, at: CGPoint(x: 0, y: 792)) }
+        outline.insertChild(item, at: index)
+    }
+    pdf.outlineRoot = outline
+    return pdf.dataRepresentation() ?? Data()
+}
+
+/// The highlight the performance case adds (at y 500), if `page` has it.
+private func performanceHighlight(on page: PDFModelKit.PDFPage?) -> PDFObject? {
+    page?.annotations.first { annotation in
+        let rect: PDFObject? = annotation["Rect"]
+        return annotation["Subtype"]?.name == "Highlight" && rect?[1]?.number == 500
+    }
+}
+
+/// The text of the note on `page`.
+private func performanceNote(on page: PDFModelKit.PDFPage?) -> String? {
+    let note: PDFObject? = page?.annotations.first { $0["Subtype"]?.name == "Text" }
+    return note?["Contents"]?.text
+}
+
+/// Saves see every kind of change through PDFKit although they look only at the pages something could have changed:
+/// looking at pages changes nothing, and each edit (made the ways modules and PDFView make them, in place included)
+/// reaches the file, with the pages nobody touched kept object for object.
+@MainActor
+private func documentKitSaveTracking() {
+    let folder = tempFolder("tracking")
+    let url = folder.appendingPathComponent("Tracked.pdf")
+    let original = performanceFixture(pages: 12)
+    guard (try? original.write(to: url)) != nil else { return check(false, "the fixture is written") }
+    let handle = openedHandle(url)
+    let pdf = handle.pdf
+
+    // Reading, drawing and clicking are not changes.
+    for index in 0..<4 { _ = pdf.page(at: index)?.annotations.map { ($0.contents, $0.border?.lineWidth, $0.bounds) } }
+    if let page = pdf.page(at: 1), let context = CGContext(data: nil, width: 612, height: 792, bitsPerComponent: 8, bytesPerRow: 0,
+                                                           space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) {
+        page.draw(with: .mediaBox, to: context)
+    }
+    _ = pdf.page(at: 2)?.annotation(at: CGPoint(x: 80, y: 608))
+    _ = pdf.page(at: 5)?.rotation
+    check(DocumentBaseline.saveOutcome(of: handle).method == .unchanged, "looking at pages changes nothing")
+
+    func annotation(_ page: Int, _ type: String) -> PDFAnnotation? { pdf.page(at: page)?.annotations.first { $0.type == type } }
+    annotation(0, "Text")?.bounds = CGRect(x: 90, y: 610, width: 20, height: 20)
+    annotation(1, "Highlight")?.color = .systemPink
+    annotation(11, "Ink")?.border?.lineWidth = 4   // in place, on a page nothing else touched: PDFKit writes it back
+    if let page = pdf.page(at: 3), let highlight = annotation(3, "Highlight") { page.removeAnnotation(highlight) }
+    pdf.page(at: 4)?.rotation = 180
+    pdf.page(at: 5)?.setBounds(CGRect(x: 36, y: 36, width: 540, height: 720), for: .cropBox)
+    if let page = pdf.page(at: 6), let target = pdf.page(at: 9) {
+        let link = PDFAnnotation(bounds: CGRect(x: 72, y: 72, width: 100, height: 20), forType: .link, withProperties: nil)
+        link.destination = PDFKit.PDFDestination(page: target, at: CGPoint(x: 0, y: 792))
+        page.addAnnotation(link)
+    }
+    _ = annotation(7, "Text")?.setValue("Set through its key", forAnnotationKey: .contents)
+
+    let outcome = DocumentBaseline.saveOutcome(of: handle)
+    check(outcome.method == .appended && outcome.notes.isEmpty, "the edits are appended: \(outcome.method) \(outcome.notes)")
+    guard let model = try? PDFModel(data: outcome.data), let base = try? PDFModel(data: original) else { return check(false, "QPDF reads the save") }
+    func saved(_ page: Int, _ subtype: String) -> PDFObject? { model.page(at: page)?.annotations.first { $0["Subtype"]?.name == subtype } }
+    check(saved(0, "Text")?["Rect"]?[0]?.number == 90, "the moved note")
+    check(saved(1, "Highlight")?["C"] != nil && saved(1, "Highlight")?["C"]?.value != base.page(at: 1)?.annotations.first { $0["Subtype"]?.name == "Highlight" }?["C"]?.value,
+          "the recoloured highlight")
+    let ink = saved(11, "Ink")
+    check(ink?["BS"]?["W"]?.number == 4 || ink?["Border"]?[2]?.number == 4, "the border changed in place")
+    check(saved(3, "Highlight") == nil && saved(3, "Text") != nil, "the removed highlight, the rest of its page kept")
+    check(model.page(at: 4)?.rotation == 90 + 90, "the rotated page")
+    check(model.page(at: 5)?.object["CropBox"]?[0]?.number == 36, "the cropped page")
+    let link = saved(6, "Link")
+    let destination = link?["Dest"] ?? link?["A"]?["D"]
+    check(destination?[0].map { $0.isSameObject(as: model.page(at: 9)!.object) } == true, "the new link leads to the file's own page 10")
+    check(saved(7, "Text")?["Contents"]?.text == "Set through its key", "the note set through its key")
+    for index in 8..<11 {
+        check(model.page(at: index)?.annotations.map(\.objectID) == base.page(at: index)?.annotations.map(\.objectID), "page \(index + 1) is the file's own")
+    }
+
+    // A snapshot is kept until something changes.
+    handle.state.isEdited = true
+    let first = handle.snapshot(), again = handle.snapshot()
+    if case .data(let a, _) = first, case .data(let b, _) = again { check(a == b, "an unchanged document snapshots the same bytes") }
+    annotation(10, "Text")?.contents = "Later"
+    if case .data(let later, _) = handle.snapshot(), let reread = try? PDFModel(data: later) {
+        check(reread.page(at: 10)?.annotations.first { $0["Subtype"]?.name == "Text" }?["Contents"]?.text == "Later", "a later change is in the next snapshot")
+    } else {
+        check(false, "the snapshot after a change")
+    }
+}
+
+/// Main-thread time of `body` in milliseconds, the best of `runs` (a loaded machine adds noise, never removes it).
+@MainActor
+private func mainThreadTime(runs: Int = 1, _ body: () -> Void) -> Double {
+    var best = Double.infinity
+    for _ in 0..<runs {
+        let start = DispatchTime.now().uptimeNanoseconds
+        body()
+        best = min(best, Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000)
+    }
+    return best
+}
+
+/// "Light as Preview" on a long file: opening attaches the bytes without reading every annotation, the first edit
+/// costs only its page, and a save takes on the main thread only what changed (the merge runs off it). Budgets are
+/// checked in release builds; a debug build prints the times and skips them (unoptimised code isn't what people run).
+@MainActor
+private func documentKitPerformance() {
+    let folder = tempFolder("performance")
+    let url = folder.appendingPathComponent("Long.pdf")
+    let original = performanceFixture(pages: 2000)
+    guard (try? original.write(to: url)) != nil, original.count > 0 else { return check(false, "the fixture is written") }
+
+    // Open: the window's PDFKit document and its authoritative bytes.
+    var handle: DocumentHandle!
+    let open = mainThreadTime(runs: 3) {
+        guard let pdf = DocumentBaseline.document(url: url), let bytes = try? Data(contentsOf: url, options: .mappedIfSafe) else { return }
+        handle = DocumentHandle(url: url, pdf: pdf, state: DocumentState(), undoManager: makeUndoManager())
+        DocumentBaseline.attach(bytes, to: handle)
+    }
+    guard handle != nil, handle.pageCount == 2000 else { return check(false, "the long file opens") }
+    let pdf = handle.pdf
+    // The window shows the first pages (PDFKit reads their annotations to draw them).
+    for index in 0..<3 { _ = pdf.page(at: index)?.annotations }
+
+    // A first edit: a highlight on page 1000 and an edited note on page 1500.
+    let edit = mainThreadTime {
+        let highlight = PDFAnnotation(bounds: CGRect(x: 72, y: 500, width: 80, height: 14), forType: .highlight, withProperties: nil)
+        highlight.quadrilateralPoints = [NSValue(point: CGPoint(x: 0, y: 14)), NSValue(point: CGPoint(x: 80, y: 14)), NSValue(point: .zero), NSValue(point: CGPoint(x: 80, y: 0))]
+        highlight.color = .systemGreen
+        pdf.page(at: 999)?.addAnnotation(highlight)
+        pdf.page(at: 1499)?.annotations.first { $0.type == "Text" }?.contents = "Edited note"
+    }
+    handle.state.isEdited = true
+
+    // Save: what runs on the main thread before NSDocument writes in the background.
+    var prepared: DocumentBaseline.PreparedSave?
+    let save = mainThreadTime(runs: 3) { prepared = DocumentBaseline.prepareSave(of: handle) }
+    var outcome: SaveOutcome?
+    let merge = mainThreadTime { outcome = prepared?.run() }
+    check(outcome?.method == .appended && outcome?.notes.isEmpty == true, "the edits are appended: \(String(describing: outcome?.method)) \(outcome?.notes ?? [])")
+    if let data = outcome?.data, let model = try? PDFModel(data: data) {
+        check(data.prefix(original.count) == original, "the original bytes are untouched")
+        check(performanceHighlight(on: model.page(at: 999)) != nil, "the new highlight on page 1000")
+        check(performanceNote(on: model.page(at: 1499)) == "Edited note", "the edited note on page 1500")
+        check(performanceNote(on: model.page(at: 1498)) == "Note 1499", "the page before is as it was")
+        check(model.outlines().count == 100, "the bookmarks are kept")
+    } else {
+        check(false, "QPDF reads the save")
+    }
+
+    // Page operations: a rotated page and a removed one (the file is rewritten without it).
+    let pageEdit = mainThreadTime {
+        pdf.page(at: 10)?.rotation = 90
+        pdf.removePage(at: 20)
+    }
+    var pagesSaved: DocumentBaseline.PreparedSave?
+    let pageSave = mainThreadTime(runs: 3) { pagesSaved = DocumentBaseline.prepareSave(of: handle) }
+    let pagesOutcome = pagesSaved?.run()
+    check(pagesOutcome?.method == .rewritten, "removing a page rewrites the file: \(String(describing: pagesOutcome?.method)) \(pagesOutcome?.notes ?? [])")
+    if let data = pagesOutcome?.data, let model = try? PDFModel(data: data) {
+        check(model.pageCount == 1999 && model.page(at: 10)?.rotation == 90, "the rotated page, one page fewer")
+        check(performanceHighlight(on: model.page(at: 998)) != nil, "the earlier edit is still there (page 999 now)")
+        check(performanceNote(on: model.page(at: 20)) == "Note 22", "the page after the removed one moved up")
+    } else {
+        check(false, "QPDF reads the save with pages changed")
+    }
+
+    let times = String(format: "open %.1f ms, first edit %.1f ms, save %.1f ms on the main thread (merge %.0f ms off it), page edit %.1f ms, save after page edits %.1f ms",
+                       open, edit, save, merge, pageEdit, pageSave)
+    #if DEBUG
+    print("  DocumentKit.performance (debug build, budgets not checked): \(times)")
+    #else
+    print("  DocumentKit.performance: \(times)")
+    check(open < 16, "opening attaches the bytes without a stall: \(times)")
+    check(edit < 16, "a first edit costs only its pages: \(times)")
+    check(save < 16, "a save takes under a frame on the main thread: \(times)")
+    // Removing a page is mostly PDFKit's own work; it and the save after it stay under the worst-case budget.
+    check(pageEdit < 50 && pageSave < 50, "page operations and their save stay under the worst-case budget: \(times)")
+    #endif
 }
