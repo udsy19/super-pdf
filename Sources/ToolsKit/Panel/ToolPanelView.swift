@@ -428,8 +428,14 @@ struct ControlView: View {
                     session.set(id, .string($0))
                 }
             }
-        case .files(let id, let label, let types, let allowsMultiple):
-            FilesZone(label: label, types: types, allowsMultiple: allowsMultiple, files: session.values.files(id)) { session.set(id, .files($0)) }
+        case .files(let id, let label, let types, let allowsMultiple, let pagesPerFile):
+            FilesZone(label: label, types: types, allowsMultiple: allowsMultiple, files: session.values.files(id),
+                      pages: pagesPerFile ? FilesZone.Pages(choice: { session.values.pageChoice(for: $0, in: id) }, choose: { file, choice in
+                          var values = session.values
+                          values.setPageChoice(choice, for: file, in: id)
+                          let key = ToolValues.pageChoicesKey(id)
+                          session.set(key, values[key] ?? .strings([]))
+                      }) : nil) { session.set(id, .files($0)) }
         case .positionGrid(let id, let columns, let rows, _):
             PositionGrid(columns: columns, rows: rows, selected: session.values.int(id)) { session.set(id, .int($0)) }
         case .action(let id, let title, let isDestructive, let symbol):

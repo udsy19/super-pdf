@@ -7,6 +7,9 @@ enum ToolsKitStrings {
     /// The scope popup item that asks for page numbers.
     static let rangeItem = "Some pages…"
     static let rangePlaceholder = "1–3, 7"
+    /// The "Pages" choice under a file in a queue (ux §5.3 Combine: "Pages: all ▾").
+    static let allPages = "All"
+    static func pagesOf(_ fileName: String) -> String { "Pages of \(Strings.quoted(fileName))" }
     /// A failure that isn't a `ToolError` (the code goes behind Show details).
     static let somethingWentWrong = "Something went wrong. Nothing was changed."
     /// The open panel's message when a tile needs a document and none is open.

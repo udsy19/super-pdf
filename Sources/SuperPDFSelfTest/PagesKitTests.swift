@@ -424,7 +424,8 @@ private func pagesKitCombine() {
     check(!alone.canRun && alone.message?.text == "Add at least two files to combine." && alone.panel.output == .newDocument(name: "Combined"),
           "one file is not a combination")
     let combine = session(.combineFiles, tools, document, inputs: [budget])
-    combine.set(PagesTools.Key.files, .files([photo]))
+    check(combine.values.files(PagesTools.Key.files) == [budget], "the dropped file shows in the queue")
+    combine.set(PagesTools.Key.files, .files([budget, photo]))
     check(combine.panel.primary.title == "Combine 3 files", "Combine: \(combine.panel.primary.title)")
     run(combine)
     guard let made = documents.newDocuments.last, let pdf = PDFDocument(data: made.data) else { check(false, "combined"); return }
@@ -435,12 +436,48 @@ private func pagesKitCombine() {
     check(entries == ["Report@0", "Budget@3", "Photo@5"], "a contents entry per file: \(entries ?? [])")
 
     // Without contents entries; files only (no document).
-    let plain = session(.combineFiles, tools, nil, inputs: [budget, budget])
+    let notes = folder.appendingPathComponent("Notes.pdf")
+    if let model = try? PDFModel(data: pagesPDF(["N1", "N2", "N3"])) {
+        model.setOutlines([PDFOutlineItem(title: "Intro", destination: PDFDestination(page: 0)),
+                           PDFOutlineItem(title: "Middle", destination: PDFDestination(page: 1),
+                                          children: [PDFOutlineItem(title: "Deep", destination: PDFDestination(page: 2))])])
+        try? model.data().write(to: notes)
+    }
+    let plain = session(.combineFiles, tools, nil, inputs: [budget, notes])
     plain.set(PagesTools.Key.contents, .bool(false))
     run(plain)
     check((try? PDFModel(data: documents.newDocuments.last!.data).outlines())?.isEmpty == true && documents.newDocuments.last?.data.isEmpty == false,
           "no contents entries")
     plain.set(PagesTools.Key.contents, .bool(true))
+
+    // Pages per file ("Pages: all ▾" on each row): page 2 of Budget, then pages 3 and 2 of Notes; contents entries follow
+    // the pages that came, and an entry whose page was left out gives way to its children.
+    let some = session(.combineFiles, tools, nil, inputs: [budget, notes])
+    if case .files(_, _, _, _, let perFile)? = some.panel.controls.first(where: { $0.id == PagesTools.Key.files }) {
+        check(perFile, "the queue has a Pages choice per file")
+    } else { check(false, "the queue is a files list") }
+    var chosen = some.values
+    chosen.setPageChoice("2", for: budget, in: PagesTools.Key.files)
+    chosen.setPageChoice("3, 2", for: notes, in: PagesTools.Key.files)
+    let key = ToolValues.pageChoicesKey(PagesTools.Key.files)
+    some.set(key, chosen[key]!)
+    check(some.values.pageChoice(for: notes, in: PagesTools.Key.files) == "3, 2", "the choice is kept per file")
+    run(some)
+    if let made = documents.newDocuments.last, let pdf = PDFDocument(data: made.data) {
+        check(texts(pdf) == ["B", "N3", "N2"], "only the chosen pages, in the chosen order: \(texts(pdf))")
+        check(made.banner?.text == "Combined 2 files into 3 pages.", "banner: \(made.banner?.text ?? "-")")
+        func describe(_ items: [PDFOutlineItem]) -> [String] {
+            items.map { "\($0.title)@\($0.destination?.page ?? -1)" + ($0.children.isEmpty ? "" : "[\(describe($0.children).joined(separator: ","))]") }
+        }
+        let outline = (try? PDFModel(data: made.data).outlines()).map(describe)
+        check(outline == ["Budget@0", "Notes@1[Middle@2[Deep@1]]"], "contents follow the pages: \(outline ?? [])")
+    } else { check(false, "combined with pages per file") }
+    chosen.setPageChoice("5", for: budget, in: PagesTools.Key.files)
+    some.set(key, chosen[key]!)
+    run(some)
+    check(some.message?.text == "“Budget” doesn’t have the pages chosen for it. Choose other pages.", "pages a file doesn't have are refused")
+    chosen.setPageChoice(nil, for: budget, in: PagesTools.Key.files)
+    check(chosen.pageChoice(for: budget, in: PagesTools.Key.files) == nil, "All pages clears the choice")
     installFakes()
 }
 
@@ -500,13 +537,17 @@ private func pagesKitInsert() {
 private func pagesKitCrop() {
     // Margins as seen → the page's own box, for every rotation.
     let box = CGRect(x: 0, y: 0, width: 600, height: 800)
-    let insets = Insets(top: 10, left: 20, bottom: 30, right: 40)
-    check(CropMath.crop(box, insets: insets, rotation: 0) == CGRect(x: 20, y: 30, width: 540, height: 760), "crop upright")
-    check(CropMath.crop(box, insets: insets, rotation: 90) == CGRect(x: 10, y: 20, width: 560, height: 740), "crop turned right")
-    check(CropMath.crop(box, insets: insets, rotation: 180) == CGRect(x: 40, y: 10, width: 540, height: 760), "crop upside down")
-    check(CropMath.crop(box, insets: insets, rotation: 270) == CGRect(x: 30, y: 40, width: 560, height: 740), "crop turned left")
-    check(CropMath.crop(box.offsetBy(dx: 5, dy: 5), insets: insets, rotation: -90) == CGRect(x: 35, y: 45, width: 560, height: 740), "offset box, -90")
-    check(CropMath.crop(box, insets: Insets(top: 0, left: 300, bottom: 0, right: 300), rotation: 0) == nil, "nothing left")
+    let insets = PageInsets(top: 10, left: 20, bottom: 30, right: 40)
+    check(insets.kept(in: box, rotation: 0) == CGRect(x: 20, y: 30, width: 540, height: 760), "crop upright")
+    check(insets.kept(in: box, rotation: 90) == CGRect(x: 10, y: 20, width: 560, height: 740), "crop turned right")
+    check(insets.kept(in: box, rotation: 180) == CGRect(x: 40, y: 10, width: 540, height: 760), "crop upside down")
+    check(insets.kept(in: box, rotation: 270) == CGRect(x: 30, y: 40, width: 560, height: 740), "crop turned left")
+    check(insets.kept(in: box.offsetBy(dx: 5, dy: 5), rotation: -90) == CGRect(x: 35, y: 45, width: 560, height: 740), "offset box, -90")
+    check(PageInsets(top: 0, left: 300, bottom: 0, right: 300).kept(in: box, rotation: 0) == nil, "nothing left")
+    for rotation in [0, 90, 180, 270, -90] {
+        let kept = insets.kept(in: box.offsetBy(dx: 5, dy: 7), rotation: rotation)!
+        check(PageInsets(box: box.offsetBy(dx: 5, dy: 7), kept: kept, rotation: rotation) == insets, "a dragged crop box gives its insets back at \(rotation)°")
+    }
 
     // White margins: the text sits 72 pt from the left and about 96 pt from the top of a Letter page.
     if let margins = try? PageEngine.sharedWhiteMargins(.data(pagesPDF(["Page 1", "Page 2"])), pages: [0, 1]) {
@@ -520,8 +561,20 @@ private func pagesKitCrop() {
     check(crop.panel.notice == "Cropping hides content without removing it. Use Black out to remove it." && !crop.canRun, "Crop starts with nothing")
     _ = complete { await crop.perform(PagesTools.Action.whiteMargins) }
     check(abs(crop.values.int(PagesTools.Key.left) - 72) <= 3 && crop.canRun, "Remove white margins fills the fields: \(crop.values.int(PagesTools.Key.left))")
-    if case .overlay = crop.preview { } else { _ = complete { await crop.updatePreview() } }
-    if case .overlay = crop.preview { } else { check(false, "the crop is previewed on the page") }
+    _ = complete { await crop.updatePreview() }
+    let viewer = Services.viewer as? FakeViewer
+    let handles = viewer?.cropHandles[document.id]
+    check(handles?.pages == [0, 1] && abs((handles?.insets.left ?? 0) - Double(crop.values.int(PagesTools.Key.left))) < 1,
+          "the crop handles sit on the pages in scope at the panel's margins: \(String(describing: handles?.insets))")
+    // A drag on the page ends: the numbers follow (rounded down, so nothing more is cut).
+    handles?.changed(PageInsets(top: 20.7, left: 30.2, bottom: 40.9, right: 50))
+    _ = complete { await crop.perform(PagesTools.Action.cropHandles) }
+    check([crop.values.int(PagesTools.Key.top), crop.values.int(PagesTools.Key.left), crop.values.int(PagesTools.Key.bottom),
+           crop.values.int(PagesTools.Key.right)] == [20, 30, 40, 50], "a handle drag sets the margins")
+    crop.set(PagesTools.Key.unit, .string("mm"))
+    handles?.changed(PageInsets(top: 28.35, left: 0, bottom: 0, right: 0))
+    _ = complete { await crop.perform(PagesTools.Action.cropHandles) }
+    check(crop.values.int(PagesTools.Key.top) == 10, "in millimetres too: \(crop.values.int(PagesTools.Key.top))")
     crop.set(PagesTools.Key.unit, .string("mm"))
     crop.set(PagesTools.Key.top, .int(10)); crop.set(PagesTools.Key.left, .int(10)); crop.set(PagesTools.Key.bottom, .int(10)); crop.set(PagesTools.Key.right, .int(10))
     run(crop)

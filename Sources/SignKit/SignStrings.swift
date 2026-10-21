@@ -13,7 +13,7 @@ enum SignStrings {
     static let savedOnThisMac = "Saved on this Mac"
     static let initials = "Initials"
     static let createSignature = "Create signature…"
-    static let captureNote = "You can draw on the trackpad, hold a signed piece of paper up to the camera, or sign on your iPhone."
+    static let captureNote = "You can draw on the trackpad, hold a signed piece of paper up to the camera, sign on your iPhone, type your name or use a picture."
     static let date = "Date"
     static let addDate = "Add today’s date next to it"
     static let signAndSave = "Sign and save…"
@@ -45,11 +45,19 @@ enum SignStrings {
     /// Today's date as placed next to a signature ("20 Oct 2026").
     static func placedDate(_ date: Date = Date()) -> String { date.formatted(date: .abbreviated, time: .omitted) }
 
-    // MARK: Create signature (Preview's three: Trackpad · Camera · iPhone)
+    // MARK: Create signature (Preview's three: Trackpad · Camera · iPhone; then typed and imported, features #82)
 
     static let trackpad = "Trackpad"
     static let camera = "Camera"
     static let iPhone = "iPhone"
+    static let typeTab = "Type"
+    static let pictureTab = "Picture"
+    static let typeHint = "Type your name, then choose a style."
+    static let typedNamePlaceholder = "Your name"
+    static let style = "Style"
+    static let pictureHint = "Choose a picture of your signature, or drop one here. A plain paper background is taken out."
+    static let choosePicture = "Choose a Picture…"
+    static let notASignature = "That picture doesn’t look like a signature. Use one with dark ink on a plain background."
     static let trackpadStart = "Click here to begin"
     static let trackpadHint = "Sign your name on the trackpad with one finger. Press any key when you’re done."
     static let cameraHint = "Sign your name in dark ink on white paper, then hold it up to the camera. Keep it level."

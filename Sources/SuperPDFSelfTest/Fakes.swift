@@ -707,6 +707,8 @@ final class FakeViewer: ViewerPresenting {
     func showSidebar(_ mode: SidebarMode, in document: DocumentHandle) { sidebarModes[document.id] = mode }
     func showOrganiser(for document: DocumentHandle, adding files: [URL]) {}
     func showWelcome() { welcomeShown += 1 }
+    var cropHandles: [UUID: CropHandles] = [:]
+    func showCropHandles(_ handles: CropHandles?, in document: DocumentHandle) { cropHandles[document.id] = handles }
     /// Answers locked-PDF prompts from a script (nil: the window was closed) and records each `retry`.
     var lockedPasswords: [String?] = []
     var lockedAsks: [Bool] = []

@@ -30,6 +30,7 @@ enum PagesStrings {
     static let sizeSmaller = "Smaller"
     static func combine(_ n: Int) -> String { "Combine \(files(n))" }
     static let combineNeedsTwo = "Add at least two files to combine."
+    static func noChosenPages(_ file: String) -> String { "\(Strings.quoted(file)) doesn’t have the pages chosen for it. Choose other pages." }
     static let combinedName = "Combined"
     static func converting(_ name: String) -> String { "Converting \(Strings.quoted(name))…" }
     static func adding(_ name: String) -> String { "Adding \(Strings.quoted(name))…" }

@@ -163,6 +163,8 @@ final class PageItem: NSCollectionViewItem {
     var request: ThumbnailRequest?
     /// The page this cell shows, so a late render for a reused cell is ignored.
     weak var page: PDFPage?
+    /// What the page's annotations looked like when its image was asked for (`ThumbnailRenderer.markupSignature`).
+    var markup = 0
     var hoverActions: HoverActionsView?
 
     override func loadView() { view = thumbnail }

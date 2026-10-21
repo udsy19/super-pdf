@@ -957,6 +957,7 @@ private func convertRuns() {
 // made here with Quartz and PDFModelKit.
 func registerConvertKitArchiveTests() {
     SelfTest.cases.append(("ConvertKit.archive.pdfaLevels", { archivePDFALevels() }))
+    SelfTest.cases.append(("ConvertKit.archive.accessibleLevels", { archiveAccessibleLevels() }))
     SelfTest.cases.append(("ConvertKit.archive.verifierKnownBad", { archiveVerifierKnownBad() }))
     SelfTest.cases.append(("ConvertKit.archive.transparencyPart1", { archiveTransparencyPart1() }))
     SelfTest.cases.append(("ConvertKit.archive.pdfx", { archivePDFX() }))
@@ -1062,6 +1063,72 @@ private func archivePDFALevels() {
     } catch {
         check(false, "PDF/A writing failed: \(error)")
     }
+}
+
+/// The archive fixture tagged: each page's content marked as a paragraph (MCID 0), a Document → P tree, a language.
+private func archiveTaggedSource() throws -> Data {
+    let model = try PDFModel(data: try archiveSource())
+    for page in model.pages {
+        page.setContentData(Data("/P <</MCID 0>> BDC\n".utf8) + (try page.contentData()) + Data("\nEMC\n".utf8))
+    }
+    try model.setStructureTree(PDFStructureTree(elements: [PDFStructureElement(type: "Document", kids: (0..<2).map { index in
+        .element(PDFStructureElement(type: "P", page: index, kids: [.markedContent(page: index, mcid: 0)]))
+    })]))
+    model.root.set("Lang", .text("en-GB"))
+    return try model.data()
+}
+
+/// The accessible "a" levels keep a tagged file's pages and tags (no re-render); they are offered only for tagged files.
+@MainActor
+private func archiveAccessibleLevels() {
+    let folder = archiveFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    guard let taggedData = try? archiveTaggedSource(), let plain = try? archiveSource() else { check(false, "tagged fixture"); return }
+    check(ArchiveWriter.isTagged(.data(taggedData)) && !ArchiveWriter.isTagged(.data(plain)), "tagged files are told apart")
+    for level in [PDFALevel.a2a, .a1a, .a3a] {
+        let url = folder.appendingPathComponent("archive-\(level.rawValue).pdf")
+        do {
+            let problems = try ArchiveWriter.writePDFA(.data(taggedData), level: level, to: url)
+            check(problems.isEmpty, "\(level.title) of a tagged file passes (\(archiveRules(problems)))")
+            let model = try PDFModel(url: url)
+            let marked = model.pages.allSatisfy { (try? $0.contentStream().markedContent.contains { $0.mcid == 0 }) == true }
+            check(marked, "\(level.title): the pages keep their marked content")
+            let tree = model.structureTree()
+            check(tree?.elements.first?.type == "Document" && tree?.elements.first?.kids.count == 2, "\(level.title): the tags are kept")
+            check(model.root["MarkInfo"]?["Marked"]?.bool == true && model.root["Lang"]?.value == .text("en-GB"), "\(level.title): marked, language kept")
+            if case .found(let part, let conformance, _) = ArchiveXMP.identification(of: model) {
+                check(part == level.archivePart && conformance == "A", "\(level.title): pdfaid says A")
+            } else { check(false, "\(level.title): XMP identification") }
+            check(model.outlines().map(\.title) == ["First", "Second"], "\(level.title): outline kept")
+            check(level == .a3a ? model.embeddedFiles().first?.relationship == "Unspecified" : model.embeddedFiles().isEmpty,
+                  "\(level.title): attachments as the level allows")
+            check(archiveText(url).contains("Archive page 2"), "\(level.title): text extractable")
+        } catch { check(false, "\(level.title) failed: \(error)") }
+    }
+
+    // The panel offers the "a" levels once it knows the file is tagged, and saves with them.
+    let taggedURL = folder.appendingPathComponent("Tagged.pdf"), plainURL = folder.appendingPathComponent("Plain.pdf")
+    try? taggedData.write(to: taggedURL)
+    try? plain.write(to: plainURL)
+    let provider = ConvertToolProvider(service: ckService(ckHelpers()), appName: { _ in nil })
+    func otherStandards(_ url: URL) -> [String] {
+        let document = DocumentHandle(url: url, pdf: PDFDocument(url: url)!, undoManager: makeUndoManager())
+        let session = ToolSession(tool: .forArchiving, provider: provider, document: document)
+        _ = complete { await session.updatePreview() }
+        guard case .popup(_, _, let options, _)? = session.panel.moreOptions.first else { return [] }
+        return options.map(\.id)
+    }
+    check(otherStandards(plainURL) == ["none", "2u", "pdfx-4", "pdfx-1a"], "an untagged file isn't offered the accessible levels")
+    let offered = otherStandards(taggedURL)
+    check(offered == ["none", "2u", "2a", "1a", "3a", "pdfx-4", "pdfx-1a"] && offered.count <= 7, "a tagged file is: \(offered)")
+    let document = DocumentHandle(url: taggedURL, pdf: PDFDocument(url: taggedURL)!, undoManager: makeUndoManager())
+    let request = ToolRequest(tool: .forArchiving, document: document, source: document.snapshot(), values: ToolValues(["other-standard": .string("2a")]),
+                              destination: folder.appendingPathComponent("Tagged (archive).pdf"), workFolder: SuperPDFPaths.ensure(ckFolder()))
+    if case .newFile(let url, let banner)? = ckAwait({ try await provider.run(request, progress: .ignored) }), let model = try? PDFModel(url: url) {
+        check(banner.text.contains("PDF/A-2a"), "the banner names the level: \(banner.text)")
+        if case .found(_, let conformance, _) = ArchiveXMP.identification(of: model) { check(conformance == "A", "saved as PDF/A-2a") }
+        else { check(false, "the panel's result is PDF/A") }
+    } else { check(false, "the panel saves PDF/A-2a") }
 }
 
 @MainActor

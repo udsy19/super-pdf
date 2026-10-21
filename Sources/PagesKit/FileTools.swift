@@ -7,13 +7,13 @@ import SuperPDFCore
 extension PagesTools {
     // MARK: Combine files (E)
 
-    /// The files of the queue after the open document (which goes first when there is one): dropped, then added.
-    func combineFiles(_ values: ToolValues, inputs: [URL]) -> [URL] { inputs + values.files(Key.files) }
+    /// The files of the queue after the open document (which goes first when there is one), each with its own pages.
+    func combineFiles(_ values: ToolValues, inputs: [URL]) -> [URL] { values.queue(Key.files, inputs: inputs) }
 
     func combinePanel(_ context: ToolContext) -> ToolPanel {
         let count = (context.document == nil ? 0 : 1) + combineFiles(context.values, inputs: context.inputs).count
         return ToolPanel(.convert, controls: [
-            .files(id: Key.files, label: PagesStrings.combineFilesLabel, types: Self.droppableTypes, allowsMultiple: true),
+            .files(id: Key.files, label: PagesStrings.combineFilesLabel, types: Self.droppableTypes, allowsMultiple: true, pagesPerFile: true),
             .toggle(id: Key.contents, label: PagesStrings.combineContents, isOn: true),
             .popup(id: Key.size, label: PagesStrings.fileSize, options: [
                 ToolOption("normal", PagesStrings.sizeNormal), ToolOption("smaller", PagesStrings.sizeSmaller),
@@ -31,7 +31,8 @@ extension PagesTools {
             try Task.checkCancellation()
             progress.report(completed: n, of: urls.count, label: PagesStrings.adding(url.lastPathComponent))
             let source = try await pdfSource(for: url, in: request.workFolder, progress: progress)
-            inputs.append(.init(source: source, title: url.deletingPathExtension().lastPathComponent))
+            inputs.append(.init(source: source, title: url.deletingPathExtension().lastPathComponent,
+                                pages: request.values.pageChoice(for: url, in: Key.files)))
         }
         guard inputs.count >= 2 else { throw ToolError(PagesStrings.combineNeedsTwo) }
         let contents = request.values.bool(Key.contents, default: true)
@@ -39,6 +40,8 @@ extension PagesTools {
         var (data, pages) = try await Task.detached { () throws -> (Data, Int) in
             do {
                 return try PageEngine.combine(inputs, contents: contents)
+            } catch PageEngine.CombineError.noPages(let title) {
+                throw ToolError(PagesStrings.noChosenPages(title))
             } catch PDFModelError.passwordRequired, PDFModelError.wrongPassword {
                 // Which file: the first that does not open without one.
                 let locked = zip(inputs, titles).first { (try? PDFModel($0.0.source)) == nil }?.1 ?? ""

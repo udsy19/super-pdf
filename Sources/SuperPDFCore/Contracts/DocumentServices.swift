@@ -54,10 +54,26 @@ public protocol ViewerPresenting: AnyObject {
     func showOrganiser(for document: DocumentHandle, adding files: [URL])
     /// Shown when the app opens with no document, and from Window › Welcome (ux §6.1).
     func showWelcome()
+    /// Crop's handles on the pages (ux §5.2 C: "drag handles on the page where position matters"; §5.3 Crop), or none.
+    func showCropHandles(_ handles: CropHandles?, in document: DocumentHandle)
     /// Asks for the password of a locked PDF inside a document window, as Preview does: a lock, "This PDF is locked.
     /// Enter the password to open it.", a secure field and Open. `retry` shakes the field (the last one was wrong). The
     /// window becomes the document's own when it opens. Nil when the person closes the window.
     func password(forLocked fileName: String, retry: Bool) async -> String?
+}
+
+/// What the crop handles show (`ViewerPresenting.showCropHandles`): on every page in `pages` the part `insets` keep, the
+/// rest dimmed, with a handle on each side and corner. Dragging a handle on any of those pages moves that side for all
+/// of them; when the drag ends, `changed` gets the new insets (points, as seen), which the Crop panel shows as numbers.
+@MainActor
+public struct CropHandles {
+    public var pages: Set<Int>
+    public var insets: PageInsets
+    public var changed: @MainActor (PageInsets) -> Void
+
+    public init(pages: Set<Int>, insets: PageInsets, changed: @escaping @MainActor (PageInsets) -> Void) {
+        self.pages = pages; self.insets = insets; self.changed = changed
+    }
 }
 
 /// The settings window's panes (ux §6.6).

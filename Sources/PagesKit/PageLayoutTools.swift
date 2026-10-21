@@ -12,9 +12,9 @@ extension PagesTools {
     static let millimetre = 72 / 25.4
 
     /// The margins to take off, in points, as people see the page.
-    static func cropInsets(_ values: ToolValues) -> Insets {
+    static func cropInsets(_ values: ToolValues) -> PageInsets {
         let unit = values.string(Key.unit, default: "pt") == "mm" ? millimetre : 1
-        return Insets(top: Double(values.int(Key.top)) * unit, left: Double(values.int(Key.left)) * unit,
+        return PageInsets(top: Double(values.int(Key.top)) * unit, left: Double(values.int(Key.left)) * unit,
                       bottom: Double(values.int(Key.bottom)) * unit, right: Double(values.int(Key.right)) * unit)
     }
 
@@ -37,24 +37,29 @@ extension PagesTools {
         ], primary: ToolButton(PagesStrings.crop, isEnabled: !Self.cropInsets(context.values).isZero && !scopePages(context).isEmpty))
     }
 
+    /// The crop handles on the pages in scope (ViewerKit draws them and the dimmed margins; they go when the panel
+    /// closes). A drag that ends sends the new margins back as the panel's numbers.
     func cropPreview(_ context: ToolContext) -> ToolPreview {
-        let insets = Self.cropInsets(context.values)
-        guard !insets.isZero, let pdf = context.document?.pdf else { return .none }
-        let targets = Set(scopePages(context))
-        return .overlay { page, cg in
-            guard page.document === pdf, targets.contains(pdf.index(for: page)) else { return }
-            let bounds = page.bounds(for: .cropBox)
-            guard let kept = CropMath.crop(bounds, insets: insets, rotation: page.rotation)?.offsetBy(dx: -bounds.minX, dy: -bounds.minY) else { return }
-            let whole = CGRect(origin: .zero, size: bounds.size)
-            cg.saveGState()
-            cg.addRect(whole); cg.addRect(kept)
-            cg.setFillColor(CGColor(gray: 0, alpha: 0.35))
-            cg.fillPath(using: .evenOdd)
-            cg.setStrokeColor(NSColor.controlAccentColor.cgColor)
-            cg.setLineWidth(1.5)
-            cg.stroke(kept)
-            cg.restoreGState()
+        guard let document = context.document else { return .none }
+        let pages = Set(scopePages(context))
+        Services.viewer?.showCropHandles(CropHandles(pages: pages, insets: Self.cropInsets(context.values)) { [weak self, weak document] insets in
+            guard let self, let document else { return }
+            self.draggedCrop[document.id] = insets
+            NotificationCenter.default.post(name: ToolPanel.performActionNotification, object: document,
+                                            userInfo: [ToolPanel.actionKey: Action.cropHandles])
+        }, in: document)
+        return .none
+    }
+
+    /// The margins a handle drag ended with, as the panel's numbers in its unit (rounded so nothing more is cut).
+    func takeDraggedCrop(_ context: ToolContext) -> ToolValues {
+        guard let document = context.document, let insets = draggedCrop.removeValue(forKey: document.id) else { return context.values }
+        var values = context.values
+        let unit = values.string(Key.unit, default: "pt") == "mm" ? Self.millimetre : 1
+        for (key, points) in [(Key.top, insets.top), (Key.left, insets.left), (Key.bottom, insets.bottom), (Key.right, insets.right)] {
+            values[key] = .int(max(0, Int((points / unit).rounded(.down))))
         }
+        return values
     }
 
     func runCrop(_ request: ToolRequest) throws -> ToolResult {
@@ -65,7 +70,7 @@ extension PagesTools {
         let pages = request.pages.compactMap { document.pdf.page(at: $0) }
         var changes: [(page: PDFKit.PDFPage, before: CGRect, after: CGRect)] = []
         for page in pages {
-            guard let kept = CropMath.crop(page.bounds(for: .cropBox), insets: insets, rotation: page.rotation) else {
+            guard let kept = insets.kept(in: page.bounds(for: .cropBox), rotation: page.rotation) else {
                 throw ToolError(PagesStrings.cropsEverything)
             }
             changes.append((page, page.bounds(for: box), kept))

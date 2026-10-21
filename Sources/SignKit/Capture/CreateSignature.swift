@@ -2,26 +2,30 @@ import AppKit
 @preconcurrency import AVFoundation
 import SuperPDFCore
 
-// "Create signature…" (ux §5.3: Preview's three ways): draw on the trackpad, hold a signed sheet of paper up to the
-// camera, or sign on an iPhone or iPad with Continuity Sketch. Each starts only from the person's own click; the
-// result is a transparent PNG of the ink, saved to the library as a signature or (with "Initials") as initials.
+// "Create signature…" (ux §5.3: Preview's three ways, plus the two of features #82): draw on the trackpad, hold a
+// signed sheet of paper up to the camera, sign on an iPhone or iPad with Continuity Sketch, type a name in a script font,
+// or use a picture of a signature. Each starts only from the person's own click; the result is a transparent PNG of the
+// ink, saved to the library as a signature or (with "Initials") as initials.
 
 @MainActor
 final class CreateSignatureSheet: NSWindowController {
-    private enum Source: Int { case trackpad, camera, iPhone }
+    private enum Source: Int { case trackpad, camera, iPhone, typed, picture }
 
     private let pads: [NSView]
     private let trackpad = TrackpadPad()
     private let camera = CameraPane()
     private let iPhone = SketchPane()
-    private let segments = NSSegmentedControl(labels: [SignStrings.trackpad, SignStrings.camera, SignStrings.iPhone],
+    private let typed = TypePane()
+    private let picture = PicturePane()
+    private let segments = NSSegmentedControl(labels: [SignStrings.trackpad, SignStrings.camera, SignStrings.iPhone, SignStrings.typeTab,
+                                                       SignStrings.pictureTab],
                                               trackingMode: .selectOne, target: nil, action: nil)
     private let initials = NSButton(checkboxWithTitle: SignStrings.initials, target: nil, action: nil)
     private let message = NSTextField(labelWithString: "")
     private var finish: ((SavedSignature?) -> Void)?
 
     init() {
-        pads = [trackpad, camera, iPhone]
+        pads = [trackpad, camera, iPhone, typed, picture]
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 540, height: 340), styleMask: [.titled], backing: .buffered, defer: true)
         window.title = SignStrings.createSignature
         super.init(window: window)
@@ -87,6 +91,8 @@ final class CreateSignatureSheet: NSWindowController {
     @objc private func clear() {
         trackpad.clear()
         iPhone.clear()
+        typed.clear()
+        picture.clear()
         message.stringValue = ""
     }
 
@@ -97,6 +103,8 @@ final class CreateSignatureSheet: NSWindowController {
         case .trackpad: trackpad.png()
         case .camera: camera.capture()
         case .iPhone: iPhone.png
+        case .typed: typed.png()
+        case .picture: picture.png
         }
         guard let png else { message.stringValue = SignStrings.nothingCaught; return }
         close(with: SavedSignature(kind: initials.state == .on ? .initials : .signature, image: png))
@@ -342,6 +350,135 @@ private final class LatestFrame: NSObject, AVCaptureVideoDataOutputSampleBufferD
         let image = CIImage(cvPixelBuffer: buffer)
         guard let cg = context.createCGImage(image, from: image.extent) else { return }
         lock.withLock { latest = cg }
+    }
+}
+
+// MARK: - Type (features #82: "type in a script font")
+
+/// A name and a style; the preview shows the signature as it will be saved.
+@MainActor
+final class TypePane: NSView, NSTextFieldDelegate {
+    private let name = NSTextField()
+    private let styles = NSPopUpButton()
+    private let preview = NSImageView()
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        name.placeholderString = SignStrings.typedNamePlaceholder
+        name.font = .systemFont(ofSize: 13)
+        name.delegate = self
+        name.setAccessibilityLabel(SignStrings.typedNamePlaceholder)
+        for font in SignatureInk.scriptFonts {
+            let title = NSFont(name: font, size: 15)?.displayName ?? font
+            styles.addItem(withTitle: title)
+            styles.lastItem?.representedObject = font
+            if let shown = NSFont(name: font, size: 15) { styles.lastItem?.attributedTitle = NSAttributedString(string: title, attributes: [.font: shown]) }
+        }
+        styles.target = self
+        styles.action = #selector(update)
+        styles.setAccessibilityLabel(SignStrings.style)
+        preview.imageScaling = .scaleProportionallyUpOrDown
+        let note = NSTextField(wrappingLabelWithString: SignStrings.typeHint)
+        note.font = .systemFont(ofSize: 11)
+        note.textColor = .secondaryLabelColor
+        let row = NSStackView(views: [name, styles])
+        row.spacing = 8
+        let stack = NSStackView(views: [preview, row, note])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 10
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(stack)
+        NSLayoutConstraint.activate([stack.leadingAnchor.constraint(equalTo: leadingAnchor), stack.trailingAnchor.constraint(equalTo: trailingAnchor),
+                                     stack.centerYAnchor.constraint(equalTo: centerYAnchor), preview.heightAnchor.constraint(equalToConstant: 110),
+                                     preview.widthAnchor.constraint(equalTo: stack.widthAnchor), row.widthAnchor.constraint(equalTo: stack.widthAnchor),
+                                     styles.widthAnchor.constraint(equalToConstant: 170)])
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    private var font: String? { styles.selectedItem?.representedObject as? String }
+
+    func png() -> Data? { font.flatMap { SignatureInk.typed(name.stringValue, fontName: $0) } }
+
+    func clear() { name.stringValue = ""; update() }
+
+    func controlTextDidChange(_ obj: Notification) { update() }
+
+    @objc private func update() { preview.image = png().flatMap(NSImage.init(data:)) }
+}
+
+// MARK: - Picture (features #82: "import image")
+
+/// A picture of a signature, chosen or dropped: its ink is kept (or its own look when it is already see-through).
+@MainActor
+final class PicturePane: NSView {
+    private let preview = NSImageView()
+    private let note = NSTextField(wrappingLabelWithString: SignStrings.pictureHint)
+    private(set) var png: Data?
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        note.font = .systemFont(ofSize: 11)
+        note.textColor = .secondaryLabelColor
+        note.alignment = .center
+        let button = NSButton(title: SignStrings.choosePicture, target: self, action: #selector(choose))
+        button.bezelStyle = .rounded
+        preview.imageScaling = .scaleProportionallyUpOrDown
+        preview.unregisterDraggedTypes()
+        let stack = NSStackView(views: [preview, note, button])
+        stack.orientation = .vertical
+        stack.spacing = 10
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(stack)
+        NSLayoutConstraint.activate([stack.leadingAnchor.constraint(equalTo: leadingAnchor), stack.trailingAnchor.constraint(equalTo: trailingAnchor),
+                                     stack.centerYAnchor.constraint(equalTo: centerYAnchor), preview.heightAnchor.constraint(equalToConstant: 90),
+                                     preview.widthAnchor.constraint(equalTo: stack.widthAnchor)])
+        registerForDraggedTypes([.fileURL])
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    func clear() { png = nil; preview.image = nil; note.stringValue = SignStrings.pictureHint }
+
+    @objc private func choose() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.image, .pdf]
+        panel.allowsMultipleSelection = false
+        let take: (NSApplication.ModalResponse) -> Void = { [weak self, weak panel] response in
+            guard response == .OK, let url = panel?.url else { return }
+            self?.use(url)
+        }
+        if let window { panel.beginSheetModal(for: window, completionHandler: take) } else { take(panel.runModal()) }
+    }
+
+    /// Reads the picture (a PDF's first page drawn large), keeps its ink and shows it; says so when there is none.
+    func use(_ url: URL) {
+        guard let image = NSImage(contentsOf: url) else { refuse(); return }
+        var rect = CGRect(origin: .zero, size: image.size)
+        if image.representations.first is NSPDFImageRep { rect.size = CGSize(width: image.size.width * 3, height: image.size.height * 3) }
+        guard let cg = image.cgImage(forProposedRect: &rect, context: nil, hints: nil), let ink = SignatureInk.imported(cg) else { refuse(); return }
+        png = ink
+        preview.image = NSImage(data: ink)
+        note.stringValue = SignStrings.pictureHint
+    }
+
+    private func refuse() {
+        png = nil
+        preview.image = nil
+        note.stringValue = SignStrings.notASignature
+    }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { droppedURL(sender) == nil ? [] : .copy }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        guard let url = droppedURL(sender) else { return false }
+        use(url)
+        return true
+    }
+
+    private func droppedURL(_ sender: NSDraggingInfo) -> URL? {
+        (sender.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL])?.first
     }
 }
 

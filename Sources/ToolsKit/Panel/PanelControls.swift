@@ -543,10 +543,17 @@ struct PrimaryButtonStyle: ButtonStyle {
 }
 
 struct FilesZone: View {
+    /// Each row's "Pages: all ▾" (`ToolControl.files` with `pagesPerFile`, ux §5.3 Combine).
+    struct Pages {
+        var choice: (URL) -> String?
+        var choose: (URL, String?) -> Void
+    }
+
     var label: String
     var types: [String]
     var allowsMultiple: Bool
     var files: [URL]
+    var pages: Pages?
     var onChange: ([URL]) -> Void
     @State private var targeted = false
 
@@ -576,12 +583,15 @@ struct FilesZone: View {
                 return true
             }
             ForEach(files, id: \.self) { file in
-                HStack(spacing: 6) {
-                    Image(nsImage: NSWorkspace.shared.icon(forFile: file.path)).resizable().frame(width: 16, height: 16)
-                    Text(file.lastPathComponent).font(.sp(size: 12)).lineLimit(1).truncationMode(.middle)
-                    Spacer(minLength: 4)
-                    Button { onChange(files.filter { $0 != file }) } label: { Image(systemName: "xmark").font(.system(size: 9, weight: .bold)) }
-                        .buttonStyle(.plain).foregroundStyle(Color(Style.secondary)).accessibilityLabel(Strings.Panel.cancel)
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        Image(nsImage: NSWorkspace.shared.icon(forFile: file.path)).resizable().frame(width: 16, height: 16)
+                        Text(file.lastPathComponent).font(.sp(size: 12)).lineLimit(1).truncationMode(.middle)
+                        Spacer(minLength: 4)
+                        Button { onChange(files.filter { $0 != file }) } label: { Image(systemName: "xmark").font(.system(size: 9, weight: .bold)) }
+                            .buttonStyle(.plain).foregroundStyle(Color(Style.secondary)).accessibilityLabel(Strings.Panel.cancel)
+                    }
+                    if let pages { FilePagesRow(file: file, choice: pages.choice(file)) { pages.choose(file, $0) } }
                 }
             }
         }
@@ -595,6 +605,46 @@ struct FilesZone: View {
         guard panel.runModal() == .OK else { return }
         onChange(allowsMultiple ? files + panel.urls : Array(panel.urls.prefix(1)))
     }
+}
+
+/// "Pages: All ▾" under a file in a queue: all its pages, or some typed as "1–3, 7" (the scope row's way, ux §5.1).
+private struct FilePagesRow: View {
+    var file: URL
+    var choice: String?
+    var onChange: (String?) -> Void
+    @State private var text = ""
+    @State private var typing = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Text(Strings.Panel.scopeLabel).font(.sp(size: 11)).foregroundStyle(Color(Style.secondary))
+                PopupField(options: [ToolOption("all", ToolsKitStrings.allPages), ToolOption("some", ToolsKitStrings.rangeItem)],
+                           selected: some ? "some" : "all", titleOverride: choice) { id in
+                    if id == "all" {
+                        typing = false
+                        text = ""
+                        onChange(nil)
+                    } else {
+                        typing = true
+                    }
+                }
+                .frame(width: 140, height: 24)
+                .accessibilityLabel(ToolsKitStrings.pagesOf(file.lastPathComponent))
+            }
+            .padding(.leading, 22)
+            if some {
+                PanelTextField(placeholder: ToolsKitStrings.rangePlaceholder, value: text, isSecure: false, focusOnAppear: choice == nil) { typed in
+                    text = typed
+                    if PageRanges.parse(typed, pageCount: ToolValues.anyPageCount) != nil { onChange(typed) }
+                }
+                .padding(.leading, 22)
+            }
+        }
+        .onAppear { text = choice ?? "" }
+    }
+
+    private var some: Bool { typing || choice != nil }
 }
 
 /// A provider's own view (`.custom`), made once per id and sized to its fitting height.

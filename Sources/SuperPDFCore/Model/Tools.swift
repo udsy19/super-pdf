@@ -212,6 +212,47 @@ public struct ToolValues: Codable, Hashable, Sendable {
         if case .files(let v) = storage[id] { return v }
         return []
     }
+
+    /// The list of a `.files` control. ToolsKit puts the files a tool was opened with (dropped on its tile, the Dock or
+    /// the welcome window, sent by a Quick Action) into its first control that takes several, where they can be
+    /// reordered, given pages or removed; from then on the control's list is the whole list. Asked before that (a
+    /// provider called directly), the opening files come first, then the control's own, each file once.
+    public func queue(_ id: String, inputs: [URL]) -> [URL] {
+        var seen: Set<URL> = []
+        let files = storage[id] == nil ? inputs : self.files(id)
+        return files.filter { seen.insert($0.standardizedFileURL).inserted }
+    }
+
+    /// Where a `.files` control with `pagesPerFile` keeps its "Pages: …" choices.
+    public static func pageChoicesKey(_ id: String) -> String { id + ".pages" }
+
+    /// The pages chosen for one file of a `.files` control with `pagesPerFile` (ux §5.3 Combine, "Pages: all ▾"), as
+    /// people typed them ("1–3, 5", 1-based); nil means all its pages.
+    public func pageChoice(for file: URL, in id: String) -> String? {
+        let prefix = file.standardizedFileURL.path + Self.pageChoiceSeparator
+        return strings(Self.pageChoicesKey(id)).first { $0.hasPrefix(prefix) }.map { String($0.dropFirst(prefix.count)) }
+    }
+
+    /// Sets (or with nil, clears) the pages chosen for one file.
+    public mutating func setPageChoice(_ pages: String?, for file: URL, in id: String) {
+        let path = file.standardizedFileURL.path
+        var entries = strings(Self.pageChoicesKey(id)).filter { !$0.hasPrefix(path + Self.pageChoiceSeparator) }
+        if let pages, !pages.isEmpty { entries.append(path + Self.pageChoiceSeparator + pages) }
+        storage[Self.pageChoicesKey(id)] = .strings(entries)
+    }
+
+    /// The 0-based pages a page choice gives in a file of `pageCount` pages: all of them without one; pages past the end
+    /// are left out (a file's length is only known once it is converted). Nil when the choice can't be read.
+    public static func pages(of choice: String?, pageCount: Int) -> [Int]? {
+        guard let choice, !choice.trimmingCharacters(in: .whitespaces).isEmpty else { return Array(0..<pageCount) }
+        guard let ranges = PageRanges.parse(choice, pageCount: Self.anyPageCount) else { return nil }
+        return ranges.indices.filter { $0 < pageCount }
+    }
+
+    /// The largest page number a choice may name before the file's length is known.
+    public static let anyPageCount = 100_000
+
+    private static let pageChoiceSeparator = "\u{1F}"
 }
 
 // MARK: - Panel description
@@ -258,7 +299,9 @@ public enum ToolControl {
     case toggle(id: String, label: String, isOn: Bool, rowLabel: String? = nil)
     case text(id: String, label: String?, placeholder: String, value: String, isSecure: Bool)
     /// A drop zone with a list (Combine queue, Compare's "Compare with", Images → PDF); `types` are UTType identifiers.
-    case files(id: String, label: String, types: [String], allowsMultiple: Bool)
+    /// With `pagesPerFile` each row has a "Pages: all ▾" choice (ux §5.3 Combine), kept in the values under
+    /// `ToolValues.pageChoicesKey(id)` (read with `ToolValues.pageChoice(for:in:)`).
+    case files(id: String, label: String, types: [String], allowsMultiple: Bool, pagesPerFile: Bool = false)
     /// A 3×3 or 3×2 dot grid (watermark position, page-number position); `selected` counts row by row from the top left.
     case positionGrid(id: String, columns: Int, rows: Int, selected: Int)
     /// A bordered button inside the panel ("Remove white margins", "＋ Create signature…"); runs
@@ -285,7 +328,7 @@ public enum ToolControl {
     public var id: String? {
         switch self {
         case .segmented(let id, _, _, _), .radio(let id, _, _), .popup(let id, _, _, _), .slider(let id, _, _, _, _, _),
-             .stepper(let id, _, _, _), .toggle(let id, _, _, _), .text(let id, _, _, _, _), .files(let id, _, _, _),
+             .stepper(let id, _, _, _), .toggle(let id, _, _, _), .text(let id, _, _, _, _), .files(let id, _, _, _, _),
              .positionGrid(let id, _, _, _), .action(let id, _, _, _), .checklist(let id, _, _), .chips(let id, _, _, _),
              .custom(let id, _):
             id

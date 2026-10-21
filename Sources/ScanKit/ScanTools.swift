@@ -122,11 +122,8 @@ final class ScanTools: ToolProviding {
 
     private func photoFiles(_ context: ToolContext) -> [URL] { Self.photoFiles(context.values, context.inputs) }
 
-    /// The photos chosen in the panel and dropped on it, each once.
-    static func photoFiles(_ values: ToolValues, _ inputs: [URL]) -> [URL] {
-        var seen = Set<URL>()
-        return (values.files(Key.photos) + inputs).filter { seen.insert($0).inserted }
-    }
+    /// The photos dropped on the panel or its tile and chosen in it, each once.
+    static func photoFiles(_ values: ToolValues, _ inputs: [URL]) -> [URL] { values.queue(Key.photos, inputs: inputs) }
 
     private func photoChoice(_ context: ToolContext) -> ToolPanel {
         let files = photoFiles(context)

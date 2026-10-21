@@ -138,7 +138,7 @@ extension PagesTools {
                                     symbol: source == Source.iPhone ? "iphone" : "scanner"))
             primary.isEnabled = false
         case Source.file:
-            let files = context.values.files(Key.files) + context.inputs
+            let files = context.values.queue(Key.files, inputs: context.inputs)
             if replace { primary = ToolButton(PagesStrings.replace(scopePages(context).count)) }
             primary.isEnabled = !files.isEmpty && (!replace || !scopePages(context).isEmpty)
             if files.isEmpty { message = ToolMessage(.info, PagesStrings.chooseFile) }
@@ -158,7 +158,7 @@ extension PagesTools {
         case Source.blank:
             return .inPlace(undoable: try await editor.perform(.insertBlank(after: after - 1), in: document), banner: nil)
         case Source.file:
-            let files = request.values.files(Key.files) + request.inputs
+            let files = request.values.queue(Key.files, inputs: request.inputs)
             guard !files.isEmpty else { throw ToolError(PagesStrings.chooseFile) }
             var sources: [PDFSource] = []
             for file in files { sources.append(try await pdfSource(for: file, in: request.workFolder, progress: progress)) }

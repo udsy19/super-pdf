@@ -42,30 +42,47 @@ enum PageEngine {
         var source: PDFSource
         /// The contents entry's title ("Budget").
         var title: String
+        /// The pages chosen for this file (ux §5.3 Combine, "Pages: …", as typed); nil takes them all.
+        var pages: String? = nil
     }
 
-    /// The inputs one after another; with `contents`, a top-level contents entry per input at its first page, the input's
-    /// own entries nested under it.
+    enum CombineError: Error, Equatable {
+        /// The pages chosen for a file aren't in it.
+        case noPages(title: String)
+    }
+
+    /// The inputs one after another, each with the pages chosen for it; with `contents`, a top-level contents entry per
+    /// input at its first page, the input's own entries that point at pages it kept nested under it.
     static func combine(_ inputs: [CombineInput], contents: Bool) throws -> (data: Data, pages: Int) {
         let out = PDFModel()
         var outline: [PDFOutlineItem] = []
         for input in inputs {
             let model = try PDFModel(input.source)
+            guard let pages = ToolValues.pages(of: input.pages, pageCount: model.pageCount), !pages.isEmpty || model.pageCount == 0 else {
+                throw CombineError.noPages(title: input.title)
+            }
             let start = out.pageCount
-            try out.insertPages(from: model, pages: Array(0..<model.pageCount), at: start)
-            guard contents, model.pageCount > 0 else { continue }
-            let children = model.outlines().map { shifted($0, by: start) }
+            try out.insertPages(from: model, pages: pages, at: start)
+            guard contents, !pages.isEmpty else { continue }
+            var placed: [Int: Int] = [:]
+            for (offset, page) in pages.enumerated() where placed[page] == nil { placed[page] = start + offset }
+            let children = model.outlines().flatMap { remapped($0, to: placed) }
             outline.append(PDFOutlineItem(title: input.title, destination: PDFDestination(page: start), children: children))
         }
         if contents { out.setOutlines(outline) }
         return (try out.data(), out.pageCount)
     }
 
-    private static func shifted(_ item: PDFOutlineItem, by offset: Int) -> PDFOutlineItem {
+    /// An outline entry pointed at where its page landed; an entry whose page was left out gives way to its children.
+    private static func remapped(_ item: PDFOutlineItem, to placed: [Int: Int]) -> [PDFOutlineItem] {
         var item = item
-        if var destination = item.destination { destination.page += offset; item.destination = destination }
-        item.children = item.children.map { shifted($0, by: offset) }
-        return item
+        let children = item.children.flatMap { remapped($0, to: placed) }
+        guard var destination = item.destination else { item.children = children; return [item] }
+        guard let page = placed[destination.page] else { return children }
+        destination.page = page
+        item.destination = destination
+        item.children = children
+        return [item]
     }
 
     // MARK: Split plans (features #23)
@@ -179,7 +196,7 @@ enum PageEngine {
 
     /// The white around the ink of a page as seen (top, left, bottom, right in points, rounded down so no ink is cut);
     /// nil for a blank page.
-    static func whiteMargins(_ page: GreyPage) -> Insets? {
+    static func whiteMargins(_ page: GreyPage) -> PageInsets? {
         var minX = page.width, minY = page.height, maxX = -1, maxY = -1
         for y in 0..<page.height {
             for x in 0..<page.width where page.luminance(x: x, y: y) < 245 {
@@ -189,17 +206,17 @@ enum PageEngine {
         guard maxX >= 0 else { return nil }
         let p = page.pointsPerPixel
         // Row 0 of a bitmap context's buffer is the top of the page.
-        return Insets(top: (Double(minY) * p).rounded(.down), left: (Double(minX) * p).rounded(.down),
+        return PageInsets(top: (Double(minY) * p).rounded(.down), left: (Double(minX) * p).rounded(.down),
                       bottom: (Double(page.height - 1 - maxY) * p).rounded(.down), right: (Double(page.width - 1 - maxX) * p).rounded(.down))
     }
 
     /// The white margins every one of `pages` shares (the smallest on each side), so cropping them cuts no ink anywhere.
-    static func sharedWhiteMargins(_ source: PDFSource, pages: [Int]) throws -> Insets? {
+    static func sharedWhiteMargins(_ source: PDFSource, pages: [Int]) throws -> PageInsets? {
         let document = try PDFPages.open(source)
-        var shared: Insets?
+        var shared: PageInsets?
         for index in pages {
             guard let margins = try whiteMargins(grey(PDFPages.page(document, at: index), side: 800)) else { continue }
-            shared = shared.map { Insets(top: min($0.top, margins.top), left: min($0.left, margins.left),
+            shared = shared.map { PageInsets(top: min($0.top, margins.top), left: min($0.left, margins.left),
                                          bottom: min($0.bottom, margins.bottom), right: min($0.right, margins.right)) } ?? margins
         }
         return shared
@@ -248,36 +265,5 @@ enum PageEngine {
         let tx = (target.width - box.width * scale) / 2 - box.minX * scale
         let ty = (target.height - box.height * scale) / 2 - box.minY * scale
         return CGAffineTransform(a: scale, b: 0, c: 0, d: scale, tx: tx, ty: ty)
-    }
-}
-
-/// White or cropped space on each side of a page as seen (points).
-struct Insets: Hashable, Sendable {
-    var top: Double
-    var left: Double
-    var bottom: Double
-    var right: Double
-
-    static let zero = Insets(top: 0, left: 0, bottom: 0, right: 0)
-    var isZero: Bool { self == .zero }
-}
-
-/// Crop box maths (features #28): margins taken off a page as people see it (after /Rotate) become a box in the page's
-/// own space.
-enum CropMath {
-    /// The rect left after taking `insets` (as seen) off `box` (page space) on a page turned `rotation` degrees clockwise;
-    /// nil when less than a point would be left either way.
-    static func crop(_ box: CGRect, insets: Insets, rotation: Int) -> CGRect? {
-        // Which page-space side each seen side is: (minX, minY, maxX, maxY) insets.
-        let (minX, minY, maxX, maxY): (Double, Double, Double, Double)
-        switch ((rotation % 360) + 360) % 360 {
-        case 90: (minX, minY, maxX, maxY) = (insets.top, insets.left, insets.bottom, insets.right)
-        case 180: (minX, minY, maxX, maxY) = (insets.right, insets.top, insets.left, insets.bottom)
-        case 270: (minX, minY, maxX, maxY) = (insets.bottom, insets.right, insets.top, insets.left)
-        default: (minX, minY, maxX, maxY) = (insets.left, insets.bottom, insets.right, insets.top)
-        }
-        let width = box.width - minX - maxX, height = box.height - minY - maxY
-        guard width >= 1, height >= 1 else { return nil }
-        return CGRect(x: box.minX + minX, y: box.minY + minY, width: width, height: height)
     }
 }

@@ -72,6 +72,21 @@ public final class ToolSession: ObservableObject {
         self.panel = panel
         layout = PanelLayout(panel)
         settleValues()
+        seedQueue()
+    }
+
+    /// The files the tool was opened with (dropped on its tile, the Dock or the welcome window, sent by a Quick Action) go
+    /// into its first list that takes several, so they show there and can be reordered, given pages or removed
+    /// (`ToolValues.queue`).
+    private func seedQueue() {
+        guard !inputs.isEmpty else { return }
+        for control in panel.controls + panel.moreOptions {
+            guard case .files(let id, _, _, true, _) = control else { continue }
+            guard values.files(id).isEmpty else { return }
+            values[id] = .files(ToolValues().queue(id, inputs: inputs))
+            refresh()
+            return
+        }
     }
 
     /// Convenience for tests and callers holding only the id.

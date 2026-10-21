@@ -90,6 +90,15 @@ final class PageGridViewController: NSViewController, NSCollectionViewDataSource
         select(keep.filteredIndexSet { $0 < pageCount }, scroll: selection != nil)
     }
 
+    /// Annotations changed (markup added, a note edited, a field filled, undo): the visible pages whose look changed get
+    /// their picture again; the others keep theirs.
+    func refreshMarkup() {
+        for path in collectionView.indexPathsForVisibleItems() where path.item < pageCount {
+            guard let item = collectionView.item(at: path) as? PageItem else { continue }
+            configure(item, at: path.item)
+        }
+    }
+
     private func reloadAspects() {
         aspects = (0..<pageCount).map { index in
             guard let page = document.pdf.page(at: index) else { return 11 / 8.5 }
@@ -194,9 +203,11 @@ final class PageGridViewController: NSViewController, NSCollectionViewDataSource
         item.thumbnail.originColor = kind == .organiser ? owner.pageActions.origin(of: page).map { PageOrigin.palette[$0.colorIndex].color } : nil
         item.thumbnail.setAccessibilityLabel(ViewerStrings.Sidebar.page(item.thumbnail.label))
         let pixels = Int((pageWidth * (view.window?.backingScaleFactor ?? 2)).rounded())
-        if item.page === page, item.thumbnail.image != nil, item.thumbnail.image?.width == pixels { return }
+        let markup = ThumbnailRenderer.markupSignature(of: page)
+        if item.page === page, item.markup == markup, item.thumbnail.image != nil, item.thumbnail.image?.width == pixels { return }
         item.request?.cancel()
         item.page = page
+        item.markup = markup
         let renderer = ThumbnailRenderer.shared
         item.thumbnail.image = renderer.cachedImage(for: page, pixelWidth: pixels)
         guard item.thumbnail.image == nil else { item.request = nil; return }

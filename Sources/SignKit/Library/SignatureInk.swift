@@ -1,11 +1,14 @@
 import CoreGraphics
+import CoreText
 import Foundation
 import ImageIO
 import UniformTypeIdentifiers
 
-// Turning what people make into a saved signature (features #82): strokes drawn on the trackpad become a smooth line,
-// and a picture of a signature on paper (the camera, an iPhone sketch) keeps only the ink, on a transparent background,
-// cropped to the ink. Core Graphics only, so the self-test runs it on generated input.
+// Turning what people make into a saved signature (features #82): strokes drawn on the trackpad become a smooth line, a
+// name typed in a script font is set in the ink colour, a picture of a signature on paper (the camera, an iPhone sketch,
+// an imported picture) keeps only the ink, and a picture that is already transparent keeps its own look; all on a
+// transparent background, cropped to the ink. Core Graphics and Core Text only, so the self-test runs it on generated
+// input.
 
 enum SignatureInk {
     /// Dark blue-black, like a ballpoint.
@@ -33,6 +36,54 @@ enum SignatureInk {
         }
         guard let image = context.makeImage(), let trimmed = trim(image, padding: Int(lineWidth * scale * 2)) else { return nil }
         return pngData(trimmed)
+    }
+
+    /// The script fonts a typed signature can use, in the order the panel offers them; those on this Mac.
+    static let scriptFonts: [String] = ["SnellRoundhand", "BradleyHandITCTT-Bold", "SavoyeLetPlain", "Zapfino"].filter {
+        CTFontCopyPostScriptName(CTFontCreateWithName($0 as CFString, 12, nil)) as String == $0
+    }
+
+    /// A name typed in a script font as a transparent PNG cropped to the ink; nil for blank text or an unknown font.
+    static func typed(_ text: String, fontName: String, pointSize: CGFloat = 72) -> Data? {
+        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return nil }
+        let font = CTFontCreateWithName(fontName as CFString, pointSize, nil)
+        guard CTFontCopyPostScriptName(font) as String == fontName else { return nil }
+        let attributes = [kCTFontAttributeName: font, kCTForegroundColorAttributeName: color] as [CFString: Any]
+        let line = CTLineCreateWithAttributedString(CFAttributedStringCreate(nil, text as CFString, attributes as CFDictionary))
+        // Script fonts swash well past their advance; leave room on every side, then crop to what was drawn.
+        let bounds = CTLineGetBoundsWithOptions(line, [.useGlyphPathBounds])
+        let margin = pointSize
+        let scale: CGFloat = 2
+        let width = Int((bounds.width + 2 * margin) * scale), height = Int((bounds.height + 2 * margin) * scale)
+        guard width > 0, height > 0, width * height < 40_000_000, let context = rgbaContext(width: width, height: height) else { return nil }
+        context.scaleBy(x: scale, y: scale)
+        context.textPosition = CGPoint(x: margin - bounds.minX, y: margin - bounds.minY)
+        CTLineDraw(line, context)
+        guard let image = context.makeImage(), let trimmed = trim(image, padding: Int(4 * scale)) else { return nil }
+        return pngData(trimmed)
+    }
+
+    /// An imported picture of a signature: one that is already see-through keeps its own colours, cropped to what shows;
+    /// any other keeps only its ink, as a photo does. Nil when there is nothing that looks like a signature.
+    static func imported(_ image: CGImage) -> Data? {
+        if hasTransparency(image), let trimmed = trim(image, padding: 8) { return pngData(trimmed) }
+        return extract(from: image)
+    }
+
+    /// Whether a good part of the picture is see-through (a signature saved on a transparent background).
+    static func hasTransparency(_ image: CGImage) -> Bool {
+        switch image.alphaInfo {
+        case .none, .noneSkipFirst, .noneSkipLast: return false
+        default: break
+        }
+        let width = min(image.width, 400), height = max(Int(CGFloat(image.height) * CGFloat(width) / CGFloat(max(image.width, 1))), 1)
+        guard let context = rgbaContext(width: width, height: height) else { return false }
+        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        guard let pixels = context.data?.assumingMemoryBound(to: UInt8.self) else { return false }
+        var clear = 0
+        for y in 0..<height { for x in 0..<width where pixels[y * context.bytesPerRow + x * 4 + 3] < 8 { clear += 1 } }
+        return clear * 10 > width * height
     }
 
     /// A Catmull–Rom curve through the points, so a trackpad's samples read as one flowing line.

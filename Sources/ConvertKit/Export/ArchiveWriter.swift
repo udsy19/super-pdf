@@ -6,13 +6,20 @@ import SuperPDFCore
 
 // For archiving (features #56 PDF/A, #57 PDF/X). Quartz re-renders the pages into a PDF/A (or OutputIntent) context:
 // fonts embedded, sRGB OutputIntent, no scripts, no encryption. A QPDF pass then makes the file say what it is and keeps
-// what the re-render drops: XMP identification matching /Info, the bookmarks, PDF/A-3's attachments, the structure tree
-// of a tagged source for the "a" levels. PDF/A-1 can't hold transparency, so pages that use it become pictures; then
-// the built-in check (#93) reads the result.
+// what the re-render drops: XMP identification matching /Info, the bookmarks, PDF/A-3's attachments. PDF/A-1 can't hold
+// transparency, so pages that use it become pictures; then the built-in check (#93) reads the result.
+//
+// The accessible "a" levels of a tagged file skip the re-render: it would drop the marked content the tags point at.
+// The file's own pages are kept and only what an archive can't hold changes (scripts, encryption, attachments the level
+// forbids, hidden or non-printing notes), with the OutputIntent, MarkInfo and identification added. What that can't fix
+// (a font that isn't inside the file, PDF/A-1's transparency) the check reports.
 
 enum ArchiveWriter {
     /// Writes `source` as PDF/A at `level` and returns what the PDF/A check still finds in the result (empty: it passes).
     static func writePDFA(_ source: PDFSource, level: PDFALevel, to url: URL) throws -> [PDFAProblem] {
+        if level.requiresTags, let tagged = try? PDFModel(source), isTagged(tagged) {
+            return try writeKeepingTags(tagged, level: level, to: url)
+        }
         let rendered = ArchiveTemp.file()
         defer { try? FileManager.default.removeItem(at: rendered) }
         try PDFOutput.writePDFA(source, to: rendered)
@@ -41,15 +48,62 @@ enum ArchiveWriter {
         if level.archivePart == 3 {
             try copyAttachments(from: original, to: model)
         }
-        if level.requiresTags, original.root["StructTreeRoot"] != nil, let tree = original.structureTree() {
-            try model.setStructureTree(tree)
-            model.root.set("MarkInfo", .dictionary(["Marked": .bool(true)]))
-            if let language = original.root["Lang"]?.value { model.root.set("Lang", language) }
-        }
+        if let language = original.root["Lang"]?.value { model.root.set("Lang", language) }
         let identification = [("pdfaid:part", String(level.archivePart)), ("pdfaid:conformance", level.archiveConformance)]
         setMetadata(model, original: original, identification: identification, namespaces: ["pdfaid": "http://www.aiim.org/pdfa/ns/id/"])
 
         try model.write(to: url, options: PDFWriteOptions(objectStreams: level.archivePart == 1 ? .disable : .preserve, encryption: .remove))
+        return try PDFAVerifier.verify(.file(url), level: level)
+    }
+
+    /// Whether a file has tags whose marked content is in its pages (what the "a" levels need and a re-render loses).
+    static func isTagged(_ model: PDFModel) -> Bool {
+        guard model.root["StructTreeRoot"] != nil else { return false }
+        return model.pages.contains { page in (try? page.contentStream().markedContent.contains { $0.mcid != nil }) == true }
+    }
+
+    /// Whether `source` is tagged (the panel offers the "a" levels then).
+    static func isTagged(_ source: PDFSource) -> Bool {
+        (try? PDFModel(source)).map(isTagged) ?? false
+    }
+
+    /// The "a" levels of a tagged file: its pages and tags as they are, made into an archive copy.
+    private static func writeKeepingTags(_ model: PDFModel, level: PDFALevel, to url: URL) throws -> [PDFAProblem] {
+        let part = level.archivePart
+        removeActions(model)
+        ensureOutputIntent(model)
+        if part == 1 {
+            // A transparency group with nothing see-through in it changes nothing; part 1 doesn't allow the key.
+            for page in model.pages where !ArchivePageScan(page).usesTransparency(includingGroups: false) {
+                page.object.remove("Group")
+                for form in ArchivePageScan.forms(of: page) { form.remove("Group") }
+            }
+        }
+        // Attachments: part 3 keeps them, each saying how it relates to the document; parts 1 and 2 can't hold them.
+        for file in model.embeddedFiles() {
+            if part == 3 {
+                guard file.relationship == nil, let data = try model.embeddedFileData(named: file.name) else { continue }
+                _ = model.removeEmbeddedFile(named: file.name)
+                model.addEmbeddedFile(data, name: file.name, fileName: file.fileName, mimeType: file.mimeType ?? ArchiveTemp.mimeType(forFileName: file.fileName),
+                                      description: file.description, creationDate: file.creationDate, modificationDate: file.modificationDate ?? Date(),
+                                      relationship: "Unspecified")
+            } else {
+                _ = model.removeEmbeddedFile(named: file.name)
+            }
+        }
+        // Notes and other annotations print and show, as an archive's must (pop-ups stay as they are).
+        for page in model.pages {
+            for annotation in page.annotations where annotation["Subtype"]?.name != "Popup" {
+                let flags = annotation["F"]?.int ?? 0
+                annotation.set("F", .integer((flags | 4) & ~(1 | 2 | 32)))
+            }
+        }
+        model.root.set("MarkInfo", .dictionary(["Marked": .bool(true)]))
+        setMetadata(model, original: model, identification: [("pdfaid:part", String(part)), ("pdfaid:conformance", level.archiveConformance)],
+                    namespaces: ["pdfaid": "http://www.aiim.org/pdfa/ns/id/"])
+        // Part 1 has no object streams and no LZW: streams are decoded and compressed again with Flate.
+        try model.write(to: url, options: PDFWriteOptions(objectStreams: part == 1 ? .disable : .preserve, decodeLevel: part == 1 ? .generalized : nil,
+                                                          encryption: .remove))
         return try PDFAVerifier.verify(.file(url), level: level)
     }
 

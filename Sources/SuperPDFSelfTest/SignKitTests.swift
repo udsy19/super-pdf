@@ -15,6 +15,7 @@ func registerSignKitTests() {
         ("SignKit.provider", signProvider),
         ("SignKit.library", signLibrary),
         ("SignKit.ink", signInk),
+        ("SignKit.typedAndImported", signTypedAndImported),
         ("SignKit.certificateSigning", signCertificateSigning),
         ("SignKit.changesAfterSigning", signChangesAfterSigning),
         ("SignKit.repairedAndEncrypted", signRepairedAndEncrypted),
@@ -76,6 +77,7 @@ private final class SignTestViewer: ViewerPresenting {
     func showSidebar(_ mode: SidebarMode, in document: DocumentHandle) {}
     func showOrganiser(for document: DocumentHandle, adding files: [URL]) {}
     func showWelcome() {}
+    func showCropHandles(_ handles: CropHandles?, in document: DocumentHandle) {}
     func password(forLocked fileName: String, retry: Bool) async -> String? { nil }
 }
 
@@ -380,6 +382,89 @@ private func signInk() {
     blank.setFillColor(CGColor(srgbRed: 0.9, green: 0.9, blue: 0.88, alpha: 1))
     blank.fill(CGRect(x: 0, y: 0, width: 400, height: 200))
     check(SignatureInk.extract(from: blank.makeImage()!) == nil, "blank paper gives nothing")
+}
+
+/// Typed in a script font and imported from a picture (features #82), into the library like any other signature; the
+/// sheet's Type and Picture panes give the same pictures.
+@MainActor
+private func signTypedAndImported() {
+    func image(_ png: Data?) -> CGImage? { png.flatMap { NSBitmapImageRep(data: $0)?.cgImage } }
+    /// Alpha and the colour of the most opaque pixel.
+    func ink(_ png: Data?) -> (clearCorner: Bool, solid: Bool, rgb: (Int, Int, Int))? {
+        guard let cg = image(png) else { return nil }
+        let width = cg.width, height = cg.height
+        var bytes = [UInt8](repeating: 0, count: width * height * 4)
+        let context = CGContext(data: &bytes, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
+                                space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        context.draw(cg, in: CGRect(x: 0, y: 0, width: width, height: height))
+        var best = 3
+        for i in stride(from: 3, to: bytes.count, by: 4) where bytes[i] > bytes[best] { best = i }
+        let alpha = max(Int(bytes[best]), 1)
+        return (bytes[3] == 0, bytes[best] > 200, (Int(bytes[best - 3]) * 255 / alpha, Int(bytes[best - 2]) * 255 / alpha, Int(bytes[best - 1]) * 255 / alpha))
+    }
+
+    // Typed.
+    check(!SignatureInk.scriptFonts.isEmpty, "this Mac has script fonts to type with: \(SignatureInk.scriptFonts)")
+    guard let font = SignatureInk.scriptFonts.first else { return }
+    let typed = SignatureInk.typed("Ada Lovelace", fontName: font)
+    if let found = ink(typed), let cg = image(typed) {
+        check(found.clearCorner && found.solid, "a typed name is solid ink on a clear background")
+        check(found.rgb.2 > found.rgb.0 && found.rgb.0 < 60, "in the ink colour: \(found.rgb)")
+        check(cg.width > cg.height * 2 && cg.width < 2000, "cropped to the name: \(cg.width)×\(cg.height)")
+    } else { check(false, "typing makes a signature") }
+    check(SignatureInk.typed("   ", fontName: font) == nil, "no name, no signature")
+    check(SignatureInk.typed("Ada", fontName: "NoSuchScript-Font") == nil, "an unknown style makes nothing")
+    let longer = image(SignatureInk.typed("Ada Augusta Lovelace", fontName: font))
+    check((longer?.width ?? 0) > (image(typed)?.width ?? 0), "a longer name is a wider signature")
+
+    // Imported: a scan on white keeps only its ink; a transparent PNG keeps its own colours; a blank picture gives nothing.
+    let size = (width: 600, height: 240)
+    func picture(transparent: Bool, ink colour: CGColor?) -> CGImage {
+        let context = CGContext(data: nil, width: size.width, height: size.height, bitsPerComponent: 8, bytesPerRow: 0,
+                                space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        if !transparent {
+            context.setFillColor(CGColor(gray: 1, alpha: 1))
+            context.fill(CGRect(x: 0, y: 0, width: size.width, height: size.height))
+        }
+        if let colour {
+            context.setStrokeColor(colour)
+            context.setLineWidth(6)
+            context.move(to: CGPoint(x: 100, y: 120))
+            context.addCurve(to: CGPoint(x: 500, y: 130), control1: CGPoint(x: 220, y: 230), control2: CGPoint(x: 360, y: 20))
+            context.strokePath()
+        }
+        return context.makeImage()!
+    }
+    let scanned = SignatureInk.imported(picture(transparent: false, ink: CGColor(srgbRed: 0.05, green: 0.05, blue: 0.05, alpha: 1)))
+    if let found = ink(scanned) {
+        check(found.clearCorner && found.solid, "an imported scan loses its paper")
+        check(found.rgb.2 > found.rgb.0, "and its ink takes the signature colour: \(found.rgb)")
+    } else { check(false, "an imported scan gives ink") }
+    let clear = picture(transparent: true, ink: CGColor(srgbRed: 0, green: 0.3, blue: 0.9, alpha: 1))
+    check(SignatureInk.hasTransparency(clear) && !SignatureInk.hasTransparency(picture(transparent: false, ink: nil)), "see-through pictures are told apart")
+    if let found = ink(SignatureInk.imported(clear)), let cg = image(SignatureInk.imported(clear)) {
+        check(found.rgb.2 > 200 && found.rgb.0 < 30, "a transparent signature keeps its own blue: \(found.rgb)")
+        check(cg.width < size.width && cg.height < size.height, "cropped to what shows: \(cg.width)×\(cg.height)")
+    } else { check(false, "a transparent signature imports") }
+    check(SignatureInk.imported(picture(transparent: false, ink: nil)) == nil, "a blank picture is no signature")
+
+    // Both go into the library and come back.
+    let folder = SuperPDFPaths.ensure(signFolder.appendingPathComponent("typed-imported", isDirectory: true))
+    let service = SignService(keys: MemorySigningKeyStore(), signatureKey: MemorySignatureKey(), signaturesFolder: folder)
+    let entries = [typed, scanned].compactMap { $0 }.map { SavedSignature(kind: .signature, image: $0) }
+    for entry in entries { try? service.save(entry) }
+    check(entries.count == 2 && service.savedSignatures.map(\.image) == entries.map(\.image), "typed and imported signatures are in the library")
+
+    // The sheet's panes make the same pictures (nothing is shown; a file stands in for the open panel).
+    let pane = TypePane()
+    check(pane.png() == nil, "the Type pane starts empty")
+    let file = folder.appendingPathComponent("signature.png")
+    if let data = NSBitmapImageRep(cgImage: clear).representation(using: .png, properties: [:]) { try? data.write(to: file) }
+    let picturePane = PicturePane()
+    picturePane.use(file)
+    check(picturePane.png == SignatureInk.imported(clear), "the Picture pane imports a chosen file")
+    picturePane.use(folder.appendingPathComponent("missing.png"))
+    check(picturePane.png == nil, "an unreadable picture is refused")
 }
 
 // MARK: - Certificate signing (features #82, #83, §3.6)

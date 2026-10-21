@@ -33,6 +33,8 @@ public final class DocumentWindowController: NSWindowController, NSWindowDelegat
     var darkPDF = false
     var reader: ReaderState?
     private var cancellables: Set<AnyCancellable> = []
+    /// Crop's handles while its panel is open.
+    private(set) var cropHandlesView: CropHandlesView?
 
     public var pdfView: PDFView { documentArea.pdfView }
 
@@ -118,6 +120,21 @@ public final class DocumentWindowController: NSWindowController, NSWindowDelegat
         Defaults.publisher(.toolbarTools)
             .sink { [weak self] tools in MainActor.assumeIsolated { self?.toolbarController.addFavourites(tools) } }
             .store(in: &cancellables)
+        // Markup, notes, stamps and filled fields are undo steps: the thumbnails show them as they change.
+        if let undoManager = handle.undoManager {
+            for name in [Notification.Name.NSUndoManagerDidCloseUndoGroup, .NSUndoManagerDidUndoChange, .NSUndoManagerDidRedoChange] {
+                NotificationCenter.default.publisher(for: name, object: undoManager)
+                    .receive(on: DispatchQueue.main)
+                    .sink { [weak self] _ in MainActor.assumeIsolated { self?.annotationsChanged() } }
+                    .store(in: &cancellables)
+            }
+        }
+    }
+
+    /// The thumbnails of pages whose annotations look different now get their pictures again.
+    func annotationsChanged() {
+        sidebar.thumbnails.refreshMarkup()
+        organiser?.grid.refreshMarkup()
     }
 
     // MARK: Pages and selection
@@ -214,6 +231,8 @@ public final class DocumentWindowController: NSWindowController, NSWindowDelegat
         documentArea.setOverlayPanel(nil)
         panelSlot.setPanel(nil)
         guard let panel else {
+            // Crop's handles belong to its panel: they go with it.
+            showCropHandles(nil)
             setPanelCollapsed(true)
             return
         }
@@ -244,6 +263,25 @@ public final class DocumentWindowController: NSWindowController, NSWindowDelegat
         let panel = panelSlot.panel ?? documentArea.overlayPanel
         let narrow = (window?.frame.width ?? 0) < SPMetrics.ToolPanel.overlayBelowWindowWidth
         if let panel, narrow == (panelSlot.panel != nil) { setToolPanel(panel) }
+    }
+
+    // MARK: Crop handles (ux §5.3 Crop)
+
+    /// The crop handles over the pages, or none.
+    func showCropHandles(_ handles: CropHandles?) {
+        guard let handles else {
+            cropHandlesView?.removeFromSuperview()
+            cropHandlesView = nil
+            return
+        }
+        if let view = cropHandlesView {
+            view.handles = handles
+        } else {
+            let view = CropHandlesView(pdfView: pdfView, document: handle, handles: handles)
+            view.frame = pdfView.bounds
+            pdfView.addSubview(view)
+            cropHandlesView = view
+        }
     }
 
     // MARK: Banner (ux §7.3): ToolsKit draws it; it lives in the 44 pt slot under the toolbar

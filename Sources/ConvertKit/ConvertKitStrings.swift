@@ -80,6 +80,7 @@ enum ConvertPanelStrings {
     static let level1bDetail = "For systems that only take the oldest kind"
     static let level3bDetail = "Also keeps the files attached to this PDF"
     static let level2uDetail = "Like PDF/A-2b, and its text can always be searched"
+    static let levelAccessibleDetail = "Keeps the tags screen readers use"
     static let forPrinters = "For sending to a printer"
     static let archiveCheckNote = "We’ll check the result and tell you if anything couldn’t be converted."
     static let otherStandard = "Other standard"

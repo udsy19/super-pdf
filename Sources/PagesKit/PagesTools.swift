@@ -13,6 +13,8 @@ final class PagesTools: ToolProviding {
     /// Plans of the split modes that need the pages looked at (size, blank pages), computed by `preview` and shown in
     /// the panel's button ("Split into 4 files").
     var splitPlans: [String: [[Int]]] = [:]
+    /// Margins a crop-handle drag ended with, by document, until the panel takes them (`Action.cropHandles`).
+    var draggedCrop: [UUID: PageInsets] = [:]
 
     init(editor: PageEditing) { self.editor = editor }
 
@@ -56,6 +58,8 @@ final class PagesTools: ToolProviding {
                 Services.tools?.openPanel(tool, for: context.document, inputs: [])
             case (.crop, Action.whiteMargins):
                 return try await removeWhiteMargins(context)
+            case (.crop, Action.cropHandles):
+                return takeDraggedCrop(context)
             default:
                 break
             }
@@ -102,7 +106,7 @@ final class PagesTools: ToolProviding {
     }
 
     enum Action {
-        static let organiser = "organiser", reverse = "reverse", scan = "scan", whiteMargins = "whiteMargins"
+        static let organiser = "organiser", reverse = "reverse", scan = "scan", whiteMargins = "whiteMargins", cropHandles = "cropHandles"
     }
 
     enum Source {

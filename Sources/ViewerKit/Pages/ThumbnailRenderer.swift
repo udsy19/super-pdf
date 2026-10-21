@@ -1,5 +1,6 @@
 import AppKit
 import PDFKit
+import SuperPDFCore
 
 /// A request for one thumbnail; cancelling it (the cell scrolled away or was reused) skips the render if it has not
 /// started.
@@ -14,8 +15,11 @@ public final class ThumbnailRequest: @unchecked Sendable {
 /// Page thumbnails for the sidebar, the organiser, search results and the welcome window's recents, rendered lazily and
 /// off the main thread (performance budgets: 500-page documents open in under 150 ms and scroll at 120 Hz; idle memory
 /// under 150 MB). PDFKit objects stay on the main actor (ARCHITECTURE "Rules"): the page's `CGPDFPage`, crop box and
-/// rotation are read there, and Quartz draws the page on a background queue. Images are cached by page, rotation and
-/// pixel width in a byte-bounded `NSCache`.
+/// rotation are read there, and Quartz draws the page on a background queue. Quartz leaves annotations out, so a page
+/// with markup, notes, stamps, signatures or filled fields gets them drawn over its picture by PDFKit on the main actor
+/// (features #11: thumbnails look like the page). Images are cached by page, rotation, pixel width and what the page's
+/// annotations look like, in a byte-bounded `NSCache`; the markup-free picture is kept too, so a new highlight only
+/// redraws the annotations.
 @MainActor
 public final class ThumbnailRenderer {
     public static let shared = ThumbnailRenderer()
@@ -37,21 +41,28 @@ public final class ThumbnailRenderer {
 
     /// The image if it is already rendered.
     public func cachedImage(for page: PDFPage, pixelWidth: Int) -> CGImage? {
-        cache.storage.object(forKey: key(page, pixelWidth) as NSString)?.image
+        cache.storage.object(forKey: key(page, pixelWidth, markup: Self.markupSignature(of: page)) as NSString)?.image
     }
 
-    /// Renders `page` at `pixelWidth` (height follows the page's rotated aspect) and calls `completion` on the main
-    /// actor; returns nil when the image was cached and `completion` already ran.
+    /// Renders `page` at `pixelWidth` (height follows the page's rotated aspect) with its annotations and calls
+    /// `completion` on the main actor; returns nil when the image was cached and `completion` already ran.
     @discardableResult
     public func image(for page: PDFPage, pixelWidth: Int, completion: @escaping @MainActor (CGImage) -> Void) -> ThumbnailRequest? {
-        let key = key(page, pixelWidth)
+        let markup = Self.markupSignature(of: page)
+        let key = self.key(page, pixelWidth, markup: markup), baseKey = self.key(page, pixelWidth, markup: 0)
         if let cached = cache.storage.object(forKey: key as NSString) {
             completion(cached.image)
             return nil
         }
+        if markup != 0, let base = cache.storage.object(forKey: baseKey as NSString), let image = Self.drawMarkup(of: page, over: base.image) {
+            store(image, key: key, offMain: false)
+            completion(image)
+            return nil
+        }
         let request = ThumbnailRequest()
         guard let pageRef = page.pageRef else {
-            // Pages made in memory (a new blank page) have no Quartz page; PDFKit draws those on the main actor.
+            // Pages made in memory (a new blank page) have no Quartz page; PDFKit draws those, annotations included, on the
+            // main actor.
             DispatchQueue.main.async { [weak self] in
                 guard let self, !request.isCancelled, let image = Self.renderWithPDFKit(page, pixelWidth: pixelWidth) else { return }
                 self.store(image, key: key, offMain: false)
@@ -67,21 +78,91 @@ public final class ThumbnailRenderer {
                 DispatchQueue.main.async { if !request.isCancelled { completion(cached.image) } }
                 return
             }
-            guard let image = Self.render(input) else { return }
+            guard let base = cache.storage.object(forKey: baseKey as NSString)?.image ?? Self.render(input) else { return }
             let offMain = !Thread.isMainThread
-            DispatchQueue.main.async {
-                self?.store(image, key: key, offMain: offMain)
+            DispatchQueue.main.async { [weak page] in
+                guard let self else { return }
+                self.store(base, key: baseKey, offMain: offMain)
+                guard markup != 0 else {
+                    if !request.isCancelled { completion(base) }
+                    return
+                }
+                guard let page, let image = Self.drawMarkup(of: page, over: base) else { return }
+                self.store(image, key: key, offMain: false)
                 if !request.isCancelled { completion(image) }
             }
         }
         return request
     }
 
+    // MARK: Annotations
+
+    /// The annotations a thumbnail shows: everything the page shows except links (invisible) and pop-ups (closed).
+    static func drawsInThumbnail(_ annotation: PDFAnnotation) -> Bool {
+        guard annotation.shouldDisplay else { return false }
+        let type = annotation.type ?? ""
+        return type != "Link" && type != "Popup"
+    }
+
+    /// A number that changes whenever what the page's annotations look like does (added, moved, restyled, edited,
+    /// removed, a field filled); 0 for a page without any.
+    static func markupSignature(of page: PDFPage) -> Int {
+        let shown = page.annotations.filter(drawsInThumbnail)
+        guard !shown.isEmpty else { return 0 }
+        var hasher = Hasher()
+        for annotation in shown {
+            hasher.combine(ObjectIdentifier(annotation))
+            hasher.combine(annotation.type)
+            let bounds = annotation.bounds
+            for value in [bounds.minX, bounds.minY, bounds.width, bounds.height] { hasher.combine(Double(value)) }
+            hasher.combine(annotation.color.hexRGBA)
+            hasher.combine(annotation.interiorColor?.hexRGBA)
+            hasher.combine(annotation.contents)
+            hasher.combine(annotation.modificationDate)
+            hasher.combine(annotation.border?.lineWidth.description)
+            hasher.combine(annotation.paths?.count)
+            hasher.combine(annotation.quadrilateralPoints?.count)
+            hasher.combine(annotation.font?.fontName)
+            hasher.combine(annotation.fontColor?.hexRGBA)
+            hasher.combine(annotation.widgetStringValue)
+            hasher.combine(annotation.buttonWidgetState.rawValue)
+        }
+        let value = hasher.finalize()
+        return value == 0 ? 1 : value
+    }
+
+    /// The page's annotations drawn by PDFKit over its Quartz picture (main actor: PDFKit objects).
+    static func drawMarkup(of page: PDFPage, over base: CGImage) -> CGImage? {
+        let box = page.bounds(for: .cropBox)
+        guard box.width > 0, box.height > 0,
+              let context = CGContext(data: nil, width: base.width, height: base.height, bitsPerComponent: 8, bytesPerRow: 0,
+                                      space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)
+        else { return nil }
+        context.draw(base, in: CGRect(x: 0, y: 0, width: base.width, height: base.height))
+        let rotation = ((page.rotation % 360) + 360) % 360
+        let turned = rotation == 90 || rotation == 270
+        let width = turned ? box.height : box.width
+        let scale = CGFloat(base.width) / width
+        context.interpolationQuality = .high
+        context.scaleBy(x: scale, y: scale)
+        context.concatenate(pageTransform(box: box, rotation: rotation))
+        context.clip(to: box)
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
+        for annotation in page.annotations where drawsInThumbnail(annotation) {
+            context.saveGState()
+            annotation.draw(with: .cropBox, in: context)
+            context.restoreGState()
+        }
+        NSGraphicsContext.restoreGraphicsState()
+        return context.makeImage()
+    }
+
     public func removeAll() { cache.storage.removeAllObjects() }
 
     // MARK: Rendering
 
-    private func key(_ page: PDFPage, _ pixelWidth: Int) -> String {
+    private func key(_ page: PDFPage, _ pixelWidth: Int, markup: Int) -> String {
         let serial: Int
         if let known = serials.object(forKey: page) {
             serial = known.intValue
@@ -90,7 +171,7 @@ public final class ThumbnailRenderer {
             serial = nextSerial
             serials.setObject(NSNumber(value: serial), forKey: page)
         }
-        return "\(serial)-\(page.rotation)-\(pixelWidth)"
+        return markup == 0 ? "\(serial)-\(page.rotation)-\(pixelWidth)" : "\(serial)-\(page.rotation)-\(pixelWidth)-m\(markup)"
     }
 
     private func store(_ image: CGImage, key: String, offMain: Bool) {

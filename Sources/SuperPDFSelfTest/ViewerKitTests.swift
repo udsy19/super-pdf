@@ -21,6 +21,8 @@ func registerViewerKitTests() {
     SelfTest.cases.append(("ViewerKit.pageEdits", { viewerKitPageEdits() }))
     SelfTest.cases.append(("ViewerKit.lockedPrompt", { viewerKitLockedPrompt() }))
     SelfTest.cases.append(("ViewerKit.tools", { viewerKitTools() }))
+    SelfTest.cases.append(("ViewerKit.cropHandles", { viewerKitCropHandles() }))
+    SelfTest.cases.append(("ViewerKit.thumbnailMarkup", { viewerKitThumbnailMarkup() }))
     SelfTest.cases.append(("ViewerKit.renders", { viewerKitRenders() }))
     SelfTest.cases.append(("ViewerKit.performance", { viewerKitPerformance() }))
 }
@@ -831,4 +833,85 @@ private func viewerKitPerformance() {
     check(full - bare < 40, String(format: "ViewerKit adds %.0f MB over a bare PDFView (budget 40)", full - bare))
     print(String(format: "  idle footprint: %.0f MB with the 500-page document at %.0f%% (a bare PDFView at that zoom: %.0f MB)",
                  full, scale * 100, bare))
+}
+
+// MARK: - Crop handles (ux §5.3 Crop) and thumbnails with markup (features #11)
+
+@MainActor
+private func viewerKitCropHandles() {
+    // The drag maths: sides move, stay inside the page and never get smaller than the minimum.
+    let page = CGRect(x: 0, y: 0, width: 600, height: 800), kept = CGRect(x: 50, y: 60, width: 500, height: 680)
+    let topLeft = CropFrame.Handle(dx: -1, dy: 1), right = CropFrame.Handle(dx: 1, dy: 0)
+    check(CropFrame.dragged(kept, handle: topLeft, by: CGSize(width: 20, height: -30), within: page, minimum: 18)
+          == CGRect(x: 70, y: 60, width: 480, height: 650), "the top-left corner moves its two sides")
+    check(CropFrame.dragged(kept, handle: right, by: CGSize(width: 500, height: 40), within: page, minimum: 18).maxX == 600,
+          "a side stops at the page's edge")
+    check(CropFrame.dragged(kept, handle: right, by: CGSize(width: -900, height: 0), within: page, minimum: 18).width == 18,
+          "and never crops below the minimum")
+    check(CropFrame.handle(at: CGPoint(x: 52, y: 738), on: kept, slop: 7) == topLeft, "a corner is found under the pointer")
+    check(CropFrame.handle(at: CGPoint(x: 548, y: 400), on: kept, slop: 7) == right, "an edge anywhere along it")
+    check(CropFrame.handle(at: CGPoint(x: 300, y: 400), on: kept, slop: 7) == nil, "the middle of the page isn't a handle")
+
+    // The handles live over the PDF view while the panel is open, and go with it.
+    let (documents, _) = installViewer()
+    let url = viewerFolder("crop").appendingPathComponent("Crop.pdf")
+    try? makePDF(pages: 3).write(to: url)
+    guard let controller = openWindow(url, documents: documents) else { check(false, "window"); return }
+    var changes: [PageInsets] = []
+    let panel = NSViewController()
+    panel.view = NSView()
+    Viewer.shared.showToolPanel(panel, in: controller.handle)
+    Viewer.shared.showCropHandles(CropHandles(pages: [0], insets: PageInsets(top: 10, left: 20, bottom: 30, right: 40)) { changes.append($0) },
+                                  in: controller.handle)
+    guard let view = controller.cropHandlesView else { check(false, "crop handles shown"); return }
+    check(view.superview === controller.pdfView, "the handles sit over the document")
+    Viewer.shared.showCropHandles(CropHandles(pages: [0, 1], insets: .zero) { changes.append($0) }, in: controller.handle)
+    check(controller.cropHandlesView === view && view.handles.pages == [0, 1], "new margins update the same handles")
+    Viewer.shared.showToolPanel(nil, in: controller.handle)
+    check(controller.cropHandlesView == nil && view.superview == nil, "closing the panel removes them")
+    check(changes.isEmpty, "nothing reported without a drag")
+    controller.close()
+}
+
+@MainActor
+private func viewerKitThumbnailMarkup() {
+    _ = installViewer()
+    let document = PDFDocument(data: makePDF(pages: 1))!
+    let page = document.page(at: 0)!
+    check(ThumbnailRenderer.markupSignature(of: page) == 0, "a page without annotations has no markup")
+    func thumbnail() -> CGImage? {
+        var image: CGImage?
+        ThumbnailRenderer.shared.image(for: page, pixelWidth: 306) { image = $0 }
+        let deadline = Date().addingTimeInterval(10)
+        while image == nil && Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
+        return image
+    }
+    /// The colour at a point of the page (points from the bottom left) in a 306 px wide picture of a Letter page.
+    func pixel(_ image: CGImage?, at point: CGPoint) -> (r: Int, g: Int, b: Int)? {
+        guard let image, let data = image.dataProvider?.data, let bytes = CFDataGetBytePtr(data) else { return nil }
+        let scale = CGFloat(image.width) / 612
+        let x = Int(point.x * scale), y = image.height - 1 - Int(point.y * scale)
+        let offset = y * image.bytesPerRow + x * (image.bitsPerPixel / 8)
+        return (Int(bytes[offset]), Int(bytes[offset + 1]), Int(bytes[offset + 2]))
+    }
+    let plain = thumbnail()
+    check(pixel(plain, at: CGPoint(x: 300, y: 300)).map { $0.r > 240 && $0.g > 240 && $0.b > 240 } == true, "white page")
+
+    let square = PDFAnnotation(bounds: CGRect(x: 250, y: 250, width: 100, height: 100), forType: .square, withProperties: nil)
+    square.color = .systemRed
+    square.interiorColor = NSColor(srgbRed: 1, green: 0, blue: 0, alpha: 1)
+    page.addAnnotation(square)
+    let signature = ThumbnailRenderer.markupSignature(of: page)
+    check(signature != 0, "an added box changes the page's markup")
+    let marked = thumbnail()
+    check(pixel(marked, at: CGPoint(x: 300, y: 300)).map { $0.r > 200 && $0.g < 80 && $0.b < 80 } == true,
+          "the thumbnail shows the box: \(String(describing: pixel(marked, at: CGPoint(x: 300, y: 300))))")
+    square.bounds = CGRect(x: 50, y: 50, width: 100, height: 100)
+    check(ThumbnailRenderer.markupSignature(of: page) != signature, "moving it changes the markup again")
+    page.removeAnnotation(square)
+    check(ThumbnailRenderer.markupSignature(of: page) == 0, "removing it brings the plain page back")
+    check(pixel(thumbnail(), at: CGPoint(x: 300, y: 300)).map { $0.r > 240 && $0.g > 240 } == true, "and its plain picture")
+    let link = PDFAnnotation(bounds: CGRect(x: 0, y: 0, width: 50, height: 50), forType: .link, withProperties: nil)
+    page.addAnnotation(link)
+    check(ThumbnailRenderer.markupSignature(of: page) == 0, "links don't show in thumbnails")
 }

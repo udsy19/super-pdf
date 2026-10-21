@@ -328,8 +328,9 @@ private func updateFailedSwap() {
     try? fm.removeItem(at: work)
 }
 
-/// The "Check for updates" switch turns everything off, "Check now" included, and the status says so; a copy that isn't
-/// the signed app bundle (this self-test) never checks and says why when asked to. Nothing is written or opened.
+/// The "Check for updates" switch turns the automatic checks off and the status says so, while "Check for Updates…"
+/// still checks when asked; a copy that isn't the signed app bundle (this self-test) never checks and says why when asked
+/// to. Nothing is written or opened.
 @MainActor private func updateSwitchAndStatus() {
     let folder = scratch.appendingPathComponent("updates-\(UUID().uuidString)", isDirectory: true)
     var enabled = false
@@ -341,8 +342,6 @@ private func updateFailedSwap() {
     let subscription = updater.statusChanges.sink { statuses.append($0) }
     check(updater.status == .disabled, "switched off from the start: disabled")
     updater.start()
-    updater.checkNow()
-    check(updater.status == .disabled, "switched off, “Check now” doesn't check either")
     enabled = true
     changes.send()
     RunLoop.main.run(until: Date().addingTimeInterval(0.05))
@@ -354,6 +353,9 @@ private func updateFailedSwap() {
     changes.send()
     RunLoop.main.run(until: Date().addingTimeInterval(0.05))
     check(updater.status == .disabled, "switched off again: disabled")
+    updater.checkNow()
+    if case .failed(let why) = updater.status { check(why.contains("Super PDF"), "switched off, “Check for Updates…” still asks: \(why)") }
+    else { check(false, "switched off, a manual check still runs: \(updater.status)") }
     updater.installNow()   // nothing staged: nothing happens
     check(statuses.first == .disabled && statuses.contains(.idle), "the status changes are published (\(statuses))")
     check(!FileManager.default.fileExists(atPath: folder.path), "no check ran, so no bookkeeping was written")

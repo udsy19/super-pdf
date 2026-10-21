@@ -101,6 +101,10 @@ public final class Viewer: ViewerPresenting {
         controllers[document.id]?.showSidebar(mode)
     }
 
+    public func showCropHandles(_ handles: CropHandles?, in document: DocumentHandle) {
+        controllers[document.id]?.showCropHandles(handles)
+    }
+
     public func showOrganiser(for document: DocumentHandle, adding files: [URL]) {
         controllers[document.id]?.showOrganiser(adding: files)
     }

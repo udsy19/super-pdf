@@ -2,8 +2,9 @@
 // Sources/UpdateKit/Updater.swift (commit 6715dbe) by way of super-kit Sources/SuperUpdate/Updater.swift. Kept from
 // Super Granola: `UpdateChecking` with a status, "check now" and "install now"; the identity, the bookkeeping file and
 // the idle gate come from the app. Changed here: one channel and no managed preferences; the app's "Check for updates"
-// switch (Settings › Privacy, features §3.5) turns everything off, as Super Flow's setting does (no check at all,
-// "check now" included, and a staged update is dropped); the first launch of an update only logs that it went in.
+// switch (Settings › Privacy, features §3.5) turns the automatic checks off (none scheduled, no install when idle, and
+// an update they staged is dropped), while Super PDF › Check for Updates… still checks, downloads and stages on
+// request, installing on quit or from "Install now"; the first launch of an update only logs that it went in.
 import AppKit
 import Combine
 import SuperPDFCore
@@ -23,7 +24,8 @@ struct UpdateState: Codable, Equatable {
 /// reads the latest GitHub release; a newer version is downloaded, verified and staged next to the app. The staged copy
 /// goes in when the app quits, sooner when the app's idle gate allows it (the app quits and reopens itself in the
 /// background), or at once from "Install now". Failures are logged, shown as the status and retried next cycle. The
-/// app's switch turns all of it off.
+/// app's switch turns the automatic part off; a check the person asks for still runs, and what it stages goes in when
+/// the app quits or from "Install now", never on its own while the app is idle.
 @MainActor
 public final class Updater: UpdateChecking {
     private let app: UpdateIdentity
@@ -39,6 +41,8 @@ public final class Updater: UpdateChecking {
     /// Why this copy can't update itself (not the signed app bundle); nil when it can.
     private var unavailable: String?
     private var staged: (url: URL, version: AppVersion)?
+    /// The staged update came from a check the person asked for, so it stays when automatic checks are off.
+    private var stagedOnRequest = false
     private var checking = false
     private var swapStarted = false
     private var checkTimer: Timer?
@@ -49,7 +53,8 @@ public final class Updater: UpdateChecking {
 
     /// - Parameters:
     ///   - stateFile: where the updater keeps its bookkeeping (a JSON file in the app's support folder).
-    ///   - enabled: the "Check for updates" setting, read at every step; `enabledChanges` fires when it changes.
+    ///   - enabled: the "Check for updates" setting (automatic checks), read at every step; `enabledChanges` fires when it
+    ///     changes. "Check now" works either way.
     ///   - canInstallNow: the app's idle gate.
     public init(app: UpdateIdentity, stateFile: URL, enabled: @escaping @MainActor () -> Bool, enabledChanges: AnyPublisher<Void, Never>,
                 canInstallNow: @escaping @MainActor () -> Bool) {
@@ -107,16 +112,16 @@ public final class Updater: UpdateChecking {
     }
 
     public func installNow() {
-        guard let staged, !swapStarted, enabled(), startSwap(staged, relaunch: true) else { return }
+        guard let staged, !swapStarted, enabled() || stagedOnRequest, startSwap(staged, relaunch: true) else { return }
         Log.updates.info("Installing \(staged.version, privacy: .public) now and reopening")
         NSApp.terminate(nil)
     }
 
     // MARK: - Checking
 
-    /// Automatic checks keep the schedule's gap; "Check now" doesn't. Nothing runs while the switch is off.
+    /// Automatic checks keep the schedule's gap and don't run while the switch is off; "Check now" always runs.
     private func check(manual: Bool) {
-        guard enabled() else { statusSubject.send(.disabled); return }
+        guard manual || enabled() else { statusSubject.send(.disabled); return }
         if manual, let unavailable { statusSubject.send(.failed(unavailable)); return }
         guard !checking, !swapStarted, let installer else { return }
         let last = state.lastAttempt
@@ -127,22 +132,22 @@ public final class Updater: UpdateChecking {
         Task {
             defer { checking = false }
             do {
-                try await check(with: installer)
+                try await check(with: installer, manual: manual)
             } catch {
                 Log.updates.error("Update stopped: \(error.localizedDescription, privacy: .public) Trying again next time.")
-                if staged == nil, enabled() { statusSubject.send(.failed(error.localizedDescription)) }
+                if staged == nil, manual || enabled() { statusSubject.send(.failed(error.localizedDescription)) }
             }
         }
     }
 
-    private func check(with installer: UpdateInstaller) async throws {
+    private func check(with installer: UpdateInstaller, manual: Bool) async throws {
         Log.updates.info("Checking GitHub for a newer version")
         let feed = ReleaseFeed(app)
         let release = try await feed.fetch(from: feed.url, userAgent: installer.userAgent)
         state.lastCheck = Date().timeIntervalSince1970
         guard let current, release.version > current else {
             Log.updates.info("Up to date (\(self.current?.description ?? "?", privacy: .public))")
-            if staged == nil, enabled() { statusSubject.send(.upToDate(checkedAt: Date(timeIntervalSince1970: state.lastCheck))) }
+            if staged == nil, manual || enabled() { statusSubject.send(.upToDate(checkedAt: Date(timeIntervalSince1970: state.lastCheck))) }
             return
         }
         if staged?.version == release.version { return }
@@ -153,12 +158,13 @@ public final class Updater: UpdateChecking {
         let url = try await installer.stage(release, replacing: target) { fraction in
             DispatchQueue.main.async { subject.send(.downloading(version: version, fraction: fraction)) }
         }
-        guard enabled(), !swapStarted else {
+        guard manual || enabled(), !swapStarted else {
             try? FileManager.default.removeItem(at: url)
             return
         }
         if let previous = staged, previous.url != url { try? FileManager.default.removeItem(at: previous.url) }
         staged = (url, release.version)
+        stagedOnRequest = stagedOnRequest || manual
         // Progress updates still queued on the main queue go first.
         DispatchQueue.main.async { subject.send(.readyToInstall(version: version)) }
         Log.updates.info("Version \(release.version, privacy: .public) is ready; it installs when \(self.app.displayName, privacy: .public) quits or sits idle")
@@ -167,16 +173,18 @@ public final class Updater: UpdateChecking {
         }
     }
 
-    /// Turned on: idle, then a check if one is due. Turned off: disabled, no waiting for idle, the staged update dropped.
+    /// Turned on: idle, then a check if one is due. Turned off: disabled, no waiting for idle, and an update the automatic
+    /// checks staged is dropped (one the person asked for stays, to go in on quit or from "Install now").
     private func settingChanged() {
         if enabled() {
             if status == .disabled { statusSubject.send(.idle) }
             check(manual: false)
             return
         }
-        statusSubject.send(.disabled)
         idleTimer?.invalidate()
         idleTimer = nil
+        guard !stagedOnRequest else { return }
+        statusSubject.send(.disabled)
         guard let staged, !swapStarted else { return }
         try? FileManager.default.removeItem(at: staged.url)
         self.staged = nil
@@ -196,7 +204,7 @@ public final class Updater: UpdateChecking {
     // MARK: - Installing
 
     private func installOnQuit() {
-        guard let staged, !swapStarted, enabled() else { return }
+        guard let staged, !swapStarted, enabled() || stagedOnRequest else { return }
         startSwap(staged, relaunch: false)
     }
 

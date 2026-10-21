@@ -13,6 +13,9 @@ final class ConvertToolProvider: ToolProviding {
     private let appName: @MainActor (_ fileExtension: String) -> String?
     /// Pages without text, per document and page count (asked on every panel change, worked out once).
     private var picturePages: [String: [Int]] = [:]
+    /// Whether a document is tagged (the archive panel offers the accessible "a" levels then), worked out by the
+    /// preview off the main actor, per document and edit state.
+    private var taggedDocuments: [String: Bool] = [:]
     private var lastDetection = Date.distantPast
 
     init(service: ConvertService, appName: @escaping @MainActor (String) -> String? = ConvertToolProvider.defaultAppName) {
@@ -117,8 +120,24 @@ final class ConvertToolProvider: ToolProviding {
                          primary: ToolButton(S.saveImages, isEnabled: context.document != nil), output: .folder(.images))
     }
 
+    private func taggedKey(_ document: DocumentHandle) -> String { "\(document.id)|\(document.state.isEdited)|\(document.pageCount)" }
+
+    /// The archive panel's "a" levels need to know whether the file is tagged; reading its tags is engine work.
+    func preview(for tool: ToolID, context: ToolContext) async -> ToolPreview {
+        guard tool == .forArchiving, let document = context.document else { return .none }
+        let key = taggedKey(document)
+        if taggedDocuments[key] == nil {
+            let source = document.snapshot()
+            taggedDocuments[key] = await Task.detached(priority: .userInitiated) { ArchiveWriter.isTagged(source) }.value
+        }
+        return .none
+    }
+
     private func archivePanel(_ context: ToolContext) -> ToolPanel {
         let other = context.values.string(V.otherStandard, default: "none")
+        // The accessible levels keep the file's tags, so they are offered only for a tagged file (features #56).
+        let tagged = context.document.flatMap { taggedDocuments[taggedKey($0)] } ?? false
+        let accessible: [ToolOption] = tagged ? [PDFALevel.a2a, .a1a, .a3a].map { ToolOption($0.rawValue, $0.title, detail: S.levelAccessibleDetail) } : []
         var controls: [ToolControl] = []
         if other == "none" {
             controls.append(.radio(id: V.level, options: [
@@ -132,7 +151,8 @@ final class ConvertToolProvider: ToolProviding {
         controls.append(.note(S.archiveCheckNote))
         let more: [ToolControl] = [.popup(id: V.otherStandard, label: S.otherStandard, options: [
             ToolOption("none", S.none), ToolOption(PDFALevel.a2u.rawValue, "PDF/A-2u", detail: S.level2uDetail),
-            ToolOption(PDFXLevel.x4.rawValue, "PDF/X-4", detail: S.forPrinters), ToolOption(PDFXLevel.x1a.rawValue, "PDF/X-1a", detail: S.forPrinters),
+        ] + accessible + [
+            ToolOption(V.pdfX(.x4), "PDF/X-4", detail: S.forPrinters), ToolOption(V.pdfX(.x1a), "PDF/X-1a", detail: S.forPrinters),
         ], selected: "none")]
         return ToolPanel(.presetAndMore, controls: controls, moreOptions: more, primary: ToolButton(S.saveArchiveCopy, isEnabled: context.document != nil),
                          output: .sibling(.archive, ext: "pdf"))
@@ -209,10 +229,7 @@ final class ConvertToolProvider: ToolProviding {
     }
 
     /// The files of an Images → PDF / Any file → PDF panel: dropped on the tile, then added in the list.
-    private func inputs(_ context: ToolContext) -> [URL] {
-        var seen: Set<URL> = []
-        return (context.inputs + context.values.files(V.files)).filter { seen.insert($0.standardizedFileURL).inserted }
-    }
+    private func inputs(_ context: ToolContext) -> [URL] { context.values.queue(V.files, inputs: context.inputs) }
 
     private func documentName(_ files: [URL]) -> String {
         files.count == 1 ? String.baseName(files[0]) : S.combinedName
@@ -324,7 +341,7 @@ final class ConvertToolProvider: ToolProviding {
         let output = request.workFolder.appendingPathComponent(name)
         let other = request.values.string(V.otherStandard, default: "none")
         var options = ExportOptions(format: .pdfA)
-        if let x = PDFXLevel(rawValue: other) {
+        if let x = V.pdfXLevel(other) {
             options.format = .pdfX
             options.pdfXLevel = x
             _ = try await service.export(source, options: options, destination: output, baseName: base, progress: progress)
@@ -337,8 +354,7 @@ final class ConvertToolProvider: ToolProviding {
     }
 
     private func runToPDF(_ request: ToolRequest, progress: ToolProgress) async throws -> ToolResult {
-        var seen: Set<URL> = []
-        let files = (request.inputs + request.values.files(V.files)).filter { seen.insert($0.standardizedFileURL).inserted }
+        let files = request.values.queue(V.files, inputs: request.inputs)
         guard !files.isEmpty else { throw ToolError(ConvertStrings.nothingToConvert) }
         let paper: PaperSize = switch request.values.string(V.paper, default: "fit") { case "a4": .a4; case "letter": .letter; default: .fitContent }
         let margins = Double(request.values.string(V.margins, default: "36")) ?? 36
@@ -372,6 +388,9 @@ final class ConvertToolProvider: ToolProviding {
         static let format = "format", layout = "layout", perTable = "one-sheet-per-table", pictures = "pictures-under-text"
         static let quality = "quality", jpegQuality = "jpeg-quality", multiPage = "multi-page-tiff", embedded = "pictures-inside"
         static let level = "level", otherStandard = "other-standard"
+        /// "Other standard" ids: PDF/A levels by their raw value ("2u", "1a"), PDF/X ones prefixed, as both have a "1a".
+        static func pdfX(_ level: PDFXLevel) -> String { "pdfx-" + level.rawValue }
+        static func pdfXLevel(_ id: String) -> PDFXLevel? { id.hasPrefix("pdfx-") ? PDFXLevel(rawValue: String(id.dropFirst(5))) : nil }
         static let files = "files", paper = "paper", margins = "margins", engine = "engine"
     }
 
