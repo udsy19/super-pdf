@@ -1,0 +1,14 @@
+name: tell udsy.in
+on:
+  release:
+    types: [published]
+jobs:
+  redeploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: rebuild udsy.in
+        env:
+          HOOK: ${{ secrets.UDSY_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$HOOK" ]; then echo "UDSY_DEPLOY_HOOK not set; skipping"; exit 0; fi
+          curl -fsS -X POST "$HOOK"
