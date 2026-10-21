@@ -228,8 +228,7 @@ final class DocumentToolbar: NSObject, NSToolbarDelegate, NSSearchFieldDelegate,
     }
 
     @objc func toggleMarkup(_ sender: Any?) {
-        owner.markupBarVisible.toggle()
-        Services.markup?.setMarkupBarVisible(owner.markupBarVisible, in: owner.handle)
+        Services.markup?.setMarkupBarVisible(!owner.markupBarVisible, in: owner.handle)
     }
 
     @objc private func rotateLeft(_ sender: Any?) { owner.pageActions.rotate(owner.targetPages, quarterTurns: -1) }

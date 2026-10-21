@@ -352,6 +352,16 @@ final class FakeMarkup: Annotating {
     func scale(in document: DocumentHandle, page: Int) -> MeasureScale { scales[page] ?? MeasureScale() }
     func setScale(_ scale: MeasureScale, in document: DocumentHandle, page: Int) -> UndoGroup { scales[page] = scale; return noUndo("Set Scale") }
     func setMarkupBarVisible(_ visible: Bool, in document: DocumentHandle) { markupBarVisible = visible }
+    func isMarkupBarVisible(in document: DocumentHandle) -> Bool { markupBarVisible }
+    func perform(_ command: MenuCommand, in document: DocumentHandle) -> Bool {
+        guard validate(command, in: document) != nil else { return false }
+        markupBarVisible = true
+        return true
+    }
+    func validate(_ command: MenuCommand, in document: DocumentHandle) -> Bool? {
+        [.highlightText, .underlineText, .strikeThroughText, .rectangle, .oval, .line, .arrow, .text, .note, .loupe].contains(command) ? true : nil
+    }
+    func annotationRestorer(for document: DocumentHandle) -> (@Sendable (Data) throws -> Data)? { nil }
     func attachFile(_ file: URL, to page: Int, at point: CGPoint, in document: DocumentHandle) throws -> UndoGroup { noUndo("Attach File") }
     func addStamp(_ image: Data, on page: Int, in rect: CGRect, in document: DocumentHandle) throws -> UndoGroup { noUndo("Add Stamp") }
 }

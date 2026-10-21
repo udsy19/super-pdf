@@ -26,7 +26,8 @@ public final class DocumentWindowController: NSWindowController, NSWindowDelegat
 
     /// The sidebar mode before a search took the sidebar over.
     var modeBeforeSearch: SidebarMode = .thumbnails
-    var markupBarVisible = false
+    /// Asked of MarkupKit, because the bar also opens by itself (Tools › Annotate, the markup tiles).
+    var markupBarVisible: Bool { Services.markup?.isMarkupBarVisible(in: handle) ?? false }
     /// Zoom to Fit (⌘9, Preview's): the whole page in view, kept as the window resizes, until the person zooms.
     var fitsPage = true { didSet { fitPage() } }
     var darkPDF = false

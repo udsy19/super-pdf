@@ -68,7 +68,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MenuCommandResponding,
         case .allTools: Services.tools?.showToolsSheet(for: document)
         case .welcome: Services.viewer?.showWelcome()
         case .signatureRequests: Services.requests?.showRequestsWindow()
-        default: break
+        default:
+            // Tools › Annotate: the window forwards what it doesn't own; markup acts on the frontmost document.
+            if let document { _ = Services.markup?.perform(command, in: document) }
         }
     }
 
@@ -82,7 +84,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MenuCommandResponding,
         case .allTools: return Services.tools != nil
         case .welcome: return Services.viewer != nil
         case .signatureRequests: return Services.requests != nil
-        default: return false
+        default:
+            guard let document = Services.documents?.frontmost else { return false }
+            return Services.markup?.validate(command, in: document) ?? false
         }
     }
 }

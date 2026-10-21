@@ -118,6 +118,20 @@ public protocol Annotating: CommentsReviewing, Measuring {
     var authorName: String { get }
     /// Shows or hides Preview's markup bar (⇧⌘A).
     func setMarkupBarVisible(_ visible: Bool, in document: DocumentHandle)
+    /// Whether the bar shows: View › Show/Hide Markup Toolbar and the toolbar's Markup button read it, because the bar
+    /// also opens by itself (Tools › Annotate, the Highlight & notes and Draw & shapes tiles).
+    func isMarkupBarVisible(in document: DocumentHandle) -> Bool
+    /// Tools › Annotate and its shortcuts (ux §6.4, §8: ⌃⌘H highlight … ⌃⌘N note): picks the tool and shows the bar.
+    /// The document window and the app delegate forward the menu commands they don't own; false when `command` isn't
+    /// a markup command.
+    func perform(_ command: MenuCommand, in document: DocumentHandle) -> Bool
+    /// Whether `perform` would act on `command` now (its menu item's enabled state); nil when it isn't a markup command.
+    func validate(_ command: MenuCommand, in document: DocumentHandle) -> Bool?
+    /// PDFKit drops some annotation data whenever it writes a file: names (/NM), reply and review-status links (/IRT),
+    /// the files of paper-clip notes and the sound of voice notes (features #77, #79). MarkupKit keeps them while the
+    /// document is open; DocumentKit asks for this function on the main actor when a save starts and runs it, off the
+    /// main actor, on the bytes PDFKit wrote. Nil when there is nothing to put back.
+    func annotationRestorer(for document: DocumentHandle) -> (@Sendable (Data) throws -> Data)?
     /// Clips a file (or a recorded voice note) to a page as a paper-clip annotation (features #79).
     func attachFile(_ file: URL, to page: Int, at point: CGPoint, in document: DocumentHandle) throws -> UndoGroup
     /// A stamp annotation with an appearance stream (EditKit's stamps tool and image drops in Markup mode).

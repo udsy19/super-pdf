@@ -309,6 +309,8 @@ struct PendingWrite: @unchecked Sendable {
     let unchangedFile: URL?
     let password: String?
     let pageCount: Int
+    /// Puts back the annotation data PDFKit drops when it writes (MarkupKit: names, reply links, attached files).
+    let restoreAnnotations: (@Sendable (Data) throws -> Data)?
 
     @MainActor
     init(handle: DocumentHandle, isEdited: Bool, file: URL?) {
@@ -316,6 +318,7 @@ struct PendingWrite: @unchecked Sendable {
         unchangedFile = !isEdited && !handle.state.wasRepaired ? file : nil
         password = handle.password
         pageCount = handle.pdf.pageCount
+        restoreAnnotations = unchangedFile == nil ? Services.markup?.annotationRestorer(for: handle) : nil
     }
 
     /// Writes to `url` (NSDocument's temporary file for safe saves) and reads it back before NSDocument replaces
@@ -326,6 +329,10 @@ struct PendingWrite: @unchecked Sendable {
             try FileManager.default.copyItem(at: unchangedFile, to: url)   // fails rather than replace anything
         } else {
             guard pdf.write(to: url) else { throw DocumentError.writeCheckFailed }
+            // A restore that fails leaves PDFKit's file as it is: the save still happens.
+            if let restoreAnnotations, let written = try? Data(contentsOf: url), let restored = try? restoreAnnotations(written) {
+                try restored.write(to: url)
+            }
         }
         guard let check = PDFDocument(url: url) else { throw DocumentError.writeCheckFailed }
         if check.isLocked, !(password.map(check.unlock(withPassword:)) ?? false) { throw DocumentError.writeCheckFailed }

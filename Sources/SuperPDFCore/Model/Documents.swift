@@ -123,10 +123,13 @@ public final class DocumentHandle: Identifiable {
 
     public var pageCount: Int { pdf.pageCount }
 
-    /// The current bytes for engine work: the file when nothing is edited, else PDFKit's serialisation.
+    /// The current bytes for engine work: the file when nothing is edited, else PDFKit's serialisation with the
+    /// annotation data PDFKit drops put back (`Annotating.annotationRestorer`), as a save writes it.
     public func snapshot() -> PDFSource {
         if let url, !state.isEdited { return .file(url, password: password) }
-        return .data(pdf.dataRepresentation() ?? Data(), password: password)
+        let data = pdf.dataRepresentation() ?? Data()
+        let restored = Services.markup?.annotationRestorer(for: self).flatMap { try? $0(data) }
+        return .data(restored ?? data, password: password)
     }
 }
 
