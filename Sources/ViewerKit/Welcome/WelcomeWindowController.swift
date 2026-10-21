@@ -459,16 +459,23 @@ public enum RecentDates {
     public static func string(for date: Date, now: Date = Date(), calendar: Calendar = .current, locale: Locale = .current) -> String {
         let time = DateFormatter()
         time.locale = locale
+        time.calendar = calendar
+        time.timeZone = calendar.timeZone
         time.timeStyle = .short
         time.dateStyle = .none
-        let relative = DateFormatter()
-        relative.locale = locale
-        relative.dateStyle = .medium
-        relative.timeStyle = .none
-        relative.doesRelativeDateFormatting = true
         let startToday = calendar.startOfDay(for: now)
         let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: date), to: startToday).day ?? 0
-        if days <= 1 { return "\(relative.string(from: date)), \(time.string(from: date))" }
+        if days <= 1 {
+            // DateFormatter's relative words ("Today", "Yesterday") count from the real clock, not `now`, so ask it about
+            // the same distance from the real today.
+            let relative = DateFormatter()
+            relative.locale = locale
+            relative.dateStyle = .medium
+            relative.timeStyle = .none
+            relative.doesRelativeDateFormatting = true
+            let word = relative.string(from: Calendar.current.date(byAdding: .day, value: -days, to: Date()) ?? date)
+            return "\(word), \(time.string(from: date))"
+        }
         let formatter = DateFormatter()
         formatter.locale = locale
         formatter.calendar = calendar
