@@ -13,7 +13,7 @@ import PDFModelKit
 import ProtectKit
 import RenderKit
 import ScanKit
-import SignKit
+@testable import SignKit
 import SuperPDFCore
 import ToolsKit
 import UniformTypeIdentifiers
@@ -31,6 +31,7 @@ func registerAppTests() {
     SelfTest.cases.append(("App.scanToArchive", { appScanToArchive() }))
     SelfTest.cases.append(("App.combineAndSign", { appCombineAndSign() }))
     SelfTest.cases.append(("App.requestToSeal", { appRequestToSeal() }))
+    SelfTest.cases.append(("App.e2eOutputs", { appE2EOutputs() }))
 }
 
 private let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
@@ -328,4 +329,66 @@ private func appRequestToSeal() {
     check(reports.count == 2 && reports.allSatisfy { $0.validity != .modified && $0.validity != .invalid } && reports.last?.changedAfterSigning == false,
           "the seal and Priya's signature are intact: \(reports.map(\.validity))")
     check(requests.requests.first { $0.id == request.id }?.sealedAt != nil, "the request is sealed")
+}
+
+// MARK: - The GUI run's outputs, made headlessly (scripts/e2e.sh)
+
+/// What scripts/e2e.sh asks of the real app — Make smaller, Combine, Black out, Sign (a placed signature), To Word — done
+/// here through the same panels without a window, then checked by the script's own verifier
+/// (`swift scripts/e2e-check.swift verify`), so the GUI run's checks are known to pass when the app does its job.
+@MainActor
+private func appE2EOutputs() {
+    let folder = appFolder("e2e")
+    let manager = installApp(folder)
+    defer { closeAll(manager) }
+    guard tool("/usr/bin/swift", "scripts/e2e-check.swift", "fixtures", folder.path) == 0 else { check(false, "the e2e fixtures are written"); return }
+    let lease = folder.appendingPathComponent("Lease.pdf"), schedule = folder.appendingPathComponent("Schedule.pdf")
+    guard let document = await_("open", { try await manager.open(lease) }) else { return }
+    func session(_ tool: ToolID, inputs: [URL] = []) -> ToolSession? {
+        Services.tools.provider(for: tool).map { ToolSession(tool: tool, provider: $0, document: document, inputs: inputs) }
+    }
+
+    guard let smaller = session(.makeSmaller) else { check(false, "Make smaller"); return }
+    _ = await_("estimates") { await smaller.updatePreview() }
+    _ = await_("make smaller") { await smaller.run() }
+    check(smaller.message == nil, "Make smaller ran: \(smaller.message?.text ?? "")")
+
+    guard let combine = session(.combineFiles, inputs: [schedule]) else { check(false, "Combine"); return }
+    _ = await_("combine") { await combine.run() }
+    if let combined = manager.openDocuments.first(where: { $0.displayName == "Combined" }) {
+        try? combined.snapshot().bytes().write(to: folder.appendingPathComponent("Combined.pdf"))
+    } else { check(false, "Combine made a document") }
+
+    guard let blackOut = session(.blackOut) else { check(false, "Black out"); return }
+    blackOut.set("mode", .string("find"))
+    blackOut.set("query", .string("CONFIDENTIAL"))
+    _ = await_("find") { await blackOut.updatePreview() }
+    check(blackOut.panel.primary.title.hasPrefix("Black out 1"), "found once: \(blackOut.panel.primary.title)")
+    _ = await_("black out") { await blackOut.run() }
+
+    let signature = SavedSignature(kind: .signature, image: SignatureInk.typed("Udaya Vijay Anand", fontName: SignatureInk.scriptFonts.first ?? "")
+                                       ?? Data())
+    try? Services.sign.save(signature)
+    if let group = try? Services.sign.place(signature, on: 1, in: CGRect(x: 230, y: 650, width: 180, height: 50), document: document) {
+        let work = SuperPDFPaths.ensure(folder.appendingPathComponent("work", isDirectory: true))
+        _ = await_("place") { try await manager.apply(.inPlace(undoable: group, banner: nil), of: ToolRequest(tool: .sign, document: document, workFolder: work)) }
+        try? document.snapshot().bytes().write(to: folder.appendingPathComponent("Lease (signed).pdf"))
+    } else { check(false, "the signature is placed") }
+
+    guard let word = session(.toWord) else { check(false, "To Word"); return }
+    _ = await_("to word") { await word.run() }
+
+    check(tool("/usr/bin/swift", "scripts/e2e-check.swift", "verify", folder.path) == 0, "the GUI run's checks pass on these outputs")
+}
+
+/// Runs a command line tool from the repository's folder; its exit status (output goes to the log).
+@discardableResult
+private func tool(_ path: String, _ arguments: String...) -> Int32 {
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: path)
+    process.arguments = arguments
+    process.currentDirectoryURL = repository
+    guard (try? process.run()) != nil else { return -1 }
+    while process.isRunning { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
+    return process.terminationStatus
 }

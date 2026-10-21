@@ -607,8 +607,8 @@ Super PDF has no AI tools (`features.md` §3.4), so there is no chat panel. The 
 
 Panes: **General** (open files in tabs, default save behaviour: Ask / Always save a copy / Replace, author name,
 default zoom), **Tools** (favourites in toolbar, recently-used row on/off, show jargon names in hints on/off for
-experts), **Converters** (LibreOffice: Not installed · Install… / Installed at … · Remove; Office apps found: Word,
-Pages…), **Signatures** (my certificate, trusted people, timestamp server off), **Scanning** (default dpi/colour),
+experts), **Converters** (LibreOffice: Not installed · Get LibreOffice / Installed at … · Choose… · Look Again, and the
+MPL notice; Office apps found: Word, Pages…), **Signatures** (my certificate, trusted people, timestamp server off), **Scanning** (default dpi/colour),
 **Privacy** (the exhaustive network list from `features.md` §3.5, "Check for updates" toggle).
 
 ## 7. Copy: results, saving, errors, empty states
@@ -656,7 +656,7 @@ button that fixes it when possible.
 | Owner-restricted | This file doesn't allow printing (or copying). If you know the owner password you can remove the limit. | Remove password… |
 | Damaged file | "Report.pdf" couldn't be opened. It may be damaged. We can try to repair it. | Repair / Cancel; repaired: "We repaired "Report.pdf". Check that everything looks right, then save a copy." |
 | Not a convertible type | Super PDF can't turn ".sketch" files into a PDF. Try opening the file in its app and using Print › Save as PDF. | OK |
-| Needs LibreOffice | Spreadsheets saved as ".ods" need the free Office converter (LibreOffice, about 800 MB). | Install… / Not now |
+| Needs LibreOffice | Spreadsheets saved as ".ods" need the free Office converter (LibreOffice, about 800 MB). | Get LibreOffice (opens its download page) / Not now |
 | Needs an Office app | To convert this with full fidelity, Excel needs to open it briefly. | Use Excel / Use the built-in converter (simpler result) |
 | iWork app missing | Pages isn't installed, so only the preview inside the file can be used (usually the first page). Pages is free on the Mac App Store. | Continue / Get Pages |
 | No iPhone | No iPhone or iPad nearby. Make sure it's unlocked, close by, and signed in to the same Apple Account. | Try again |

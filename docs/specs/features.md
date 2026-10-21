@@ -90,7 +90,7 @@ brief is marked **(req)**.
 | # | Tool | Behaviour | Approach | Engine |
 |---|---|---|---|---|
 | 34 | Images → PDF (req: JPG to PDF) | Drop JPG/PNG/HEIC/TIFF/GIF/BMP/WebP/RAW; one page per image; paper size "fit image" or A4/Letter with margins; order by drag; multi-page TIFF expands. | NSImage/ImageIO → PDFPage(image:) | PDFKit, ImageIO |
-| 35 | Word → PDF (req: .doc/.docx) | Native: NSAttributedString(.docx/.doc) → paginated with TextKit → PDF (good for text documents; loses complex layout, tracked changes shown as final). Better: LibreOffice helper or Microsoft Word on the Mac via automation (§3.2 ranking). The panel shows which engine will be used and a "Better fidelity" button if a better one can be installed. | Registry: native → LibreOffice → Word automation | Office |
+| 35 | Word → PDF (req: .doc/.docx) | Native: NSAttributedString(.docx/.doc) → paginated with TextKit → PDF (good for text documents; loses complex layout, tracked changes shown as final). Better: LibreOffice helper or Microsoft Word on the Mac via automation (§3.2 ranking). The panel shows which engine will be used, and "Get LibreOffice" when LibreOffice would do better and isn't on the Mac. | Registry: native → LibreOffice → Word automation | Office |
 | 36 | Excel → PDF (req: .xls/.xlsx) | Native: own OOXML reader for `.xlsx` (sheets, cells, merged cells, column widths, number formats, basic styles) rendered as tables; `.xls` and charts need LibreOffice/Excel automation. | Registry: native xlsx → LibreOffice → Excel automation | Office, Own |
 | 37 | PowerPoint → PDF (req: .ppt/.pptx) | Native: own OOXML reader for `.pptx` (slides, text boxes, images, basic shapes, backgrounds); animations ignored; `.ppt` and complex themes need LibreOffice/PowerPoint automation. | Registry: native pptx → LibreOffice → PowerPoint automation | Office, Own |
 | 38 | ODT/ODS/ODP → PDF (req) | `.odt` native via NSAttributedString(.odt) [S]; `.ods`/`.odp` via LibreOffice (its home format, perfect fidelity). | Registry | Office |
@@ -116,7 +116,7 @@ brief is marked **(req)**.
 | 53 | PDF → JPG/PNG (req) | Pages → images at 72/150/300/600 dpi or custom; PNG (lossless, transparency), JPEG (quality), TIFF, HEIC, WebP; one file per page or a single multi-page TIFF; "export images only" pulls the embedded images out at native resolution. | Quartz rendering; QPDF image stream extraction | Quartz, QPDF |
 | 54 | PDF → Text | Plain text with layout (columns kept) or reading order; per-page separators optional. | Text extraction (§2.4) | PDFKit, Own |
 | 55 | PDF → HTML / EPUB | Reflowed HTML with headings, paragraphs, images; EPUB packages the HTML with a chapter per outline entry. | Layout analysis + own writers | Own |
-| 56 | PDF → PDF/A (req) [Save as PDF/A] | Conformance PDF/A-1b, 2b, 2u, 3b (3b keeps attachments), and the accessible "a" levels (1a/2a/3a, which require tags: offered when the file is tagged or after "Check accessibility" has tagged it); Acrobat lists the same families plus PDF/E, PDF/VT and PDF/UA [A]: PDF/UA is produced by the accessibility fixer (#97), PDF/E and PDF/VT are out of scope; embeds fonts (re-renders text using available fonts when a font is not embeddable → notice), converts colour to sRGB with OutputIntent, removes JavaScript/encryption/transparency where the level forbids it, writes XMP `pdfaid`; then verifies with the built-in checker (§1.9 #93) and shows the result. | Quartz `kCGPDFContextCreatePDFA` [S, macOS 11+] for re-rendered output; QPDF for XMP/outline/attachments; own verifier | Quartz, QPDF, Own |
+| 56 | PDF → PDF/A (req) [Save as PDF/A] | Conformance PDF/A-1b, 2b, 2u, 3b (3b keeps attachments), and the accessible "a" levels (1a/2a/3a, which require tags: offered when the file is tagged or after "Check accessibility" has tagged it); Acrobat lists the same families plus PDF/E, PDF/VT and PDF/UA [A]: PDF/UA is produced by the accessibility fixer (#97), PDF/E and PDF/VT are out of scope; embeds fonts (re-renders text using available fonts when a font is not embeddable → notice), converts colour to sRGB with OutputIntent, removes JavaScript/encryption/transparency where the level forbids it, writes XMP `pdfaid`; then verifies with the built-in checker (§1.9 #93) and shows the result. A file whose own pages already pass the check is kept as it is (only scripts, encryption, forbidden attachments and hidden notes go; OutputIntent and XMP are added), so a recognised scan's text layer and a tagged file's tags survive; the "a" levels of a tagged file always keep its pages. | QPDF for the kept-pages path, XMP, outline and attachments; Quartz `kCGPDFContextCreatePDFA` [S, macOS 11+] for re-rendered output; own verifier | Quartz, QPDF, Own |
 | 57 | PDF → PDF/X [Save as PDF/X] | PDF/X-1a/X-4 basics: OutputIntent (`kCGPDFContextOutputIntents` [S]), trim/bleed boxes, no RGB in X-1a (warns and converts). | Quartz, QPDF | Quartz, QPDF |
 | 58 | PDF → images → PDF ("Print as image") | Rasterize every page (fixes rendering problems, removes everything but pixels). Used by Flatten "fully" and by Redact as a belt-and-braces option. | Quartz | Quartz |
 | 59 | Export comments / form data | Comments as FDF/XFDF/CSV/PDF summary; form data as FDF/XFDF/CSV/JSON. | QPDF (XFDF writer own) | Own, QPDF |
@@ -296,14 +296,17 @@ panel shows which one will be used in one line ("Converted by the built-in conve
 
 **LibreOffice helper [D].** LibreOffice 26.2 is installed on the reference Mac (`/Applications/LibreOffice.app`, 800 MB,
 `soffice --headless --convert-to pdf --outdir DIR FILE` [L]). Licence MPL-2.0: it cannot be bundled inside an
-MIT app without carrying MPL terms, and 800 MB would dwarf the app. Decision: **never bundled; auto-detected
-(`/Applications/LibreOffice.app`, `~/Applications`, Homebrew cask path, Settings override); offered as a one-click
-install** ("Install the free Office converter (LibreOffice, about 800 MB)") that downloads the official DMG from
-`download.documentfoundation.org` with the published SHA-256, mounts it with `hdiutil`, copies the app into
-`~/Library/Application Support/Super PDF/Helpers/` and verifies its code signature (Team ID of The Document Foundation).
-This download is explicit, never silent (size). Runs use a private profile (`-env:UserInstallation=file://…/lo-profile`),
-a 120 s timeout, no network (`--norestore --nologo --headless`), one job at a time. Settings lists the helper with
-"Remove". The MPL notice is reproduced in `THIRD_PARTY_NOTICES.md` and in Settings › Converters.
+MIT app without carrying MPL terms, and 800 MB would dwarf the app. Decision: **never bundled, never downloaded or
+installed by Super PDF; an installed copy is auto-detected** (`/Applications/LibreOffice.app`, `~/Applications`,
+Homebrew cask path, Settings override) and run headless. When a file needs it and there is none, the panel says so
+("Spreadsheets saved as ".ods" need the free Office converter (LibreOffice, about 800 MB).") and offers **Get
+LibreOffice**, which opens LibreOffice's download page in the browser; the person installs it like any app, and Super
+PDF finds it ("Look Again" in Settings, or at the next panel). The alternative that lost was a one-click install that
+downloaded the official DMG, checked its SHA-256 and code signature and copied the app into Application Support: more
+code, an 800 MB download inside the app, and a second copy of an app many people already have. Runs use a private
+profile (`-env:UserInstallation=file://…/lo-profile`), a 120 s timeout, no network (`--norestore --nologo --headless`),
+one job at a time. Settings › Converters shows where it was found, "Choose…" for another copy, and the MPL notice
+(also in `THIRD_PARTY_NOTICES.md`).
 
 **App automation.** Word/Excel/PowerPoint/Pages/Numbers/Keynote are driven with Apple Events (`NSAppleScript`/
 `OSAKit`, `NSAppleEventsUsageDescription`, the macOS Automation permission prompt names the app). The user sees "Pages
@@ -326,9 +329,11 @@ generation are not reproduced (§5). There is nothing to download for any tool, 
 for models. The owner's decision; the alternative that lost was Super Flow's on-device llama.cpp stack (Qwen3.5).
 
 ### 3.5 What touches the network, exhaustively
-1. The LibreOffice helper download, only when the user clicks Install.
+1. None for LibreOffice: "Get LibreOffice" (and "Get Pages") open a download page in the browser or the App Store; Super
+   PDF downloads nothing itself.
 2. Update checks against this repository's GitHub Releases (Super Flow's `UpdateKit`, opt-out in Settings).
-3. Fetching a URL the user typed into "Web page → PDF".
+3. Fetching a URL the user typed into "Web page → PDF" (not built yet: Any file → PDF converts local web pages and web
+   archives only, so today nothing is fetched).
 4. Optional RFC 3161 timestamps when the user turns on "Add a trusted timestamp" in certificate signing and names a
    server. Off by default.
 Everything else works with Wi-Fi off. `PRIVACY.md` repeats this list.

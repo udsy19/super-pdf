@@ -9,7 +9,7 @@
   <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-52CC64"></a>
   <img alt="macOS 14+" src="https://img.shields.io/badge/macOS-14%2B-111?logo=apple&logoColor=white">
   <img alt="Local" src="https://img.shields.io/badge/cloud-none-111">
-  <img alt="Status" src="https://img.shields.io/badge/status-design%20complete%2C%20build%20pending-0A7AFF">
+  <img alt="Status" src="https://img.shields.io/badge/status-1.0%20in%20testing-0A7AFF">
 </p>
 
 <p align="center">
@@ -29,32 +29,53 @@ opens one small panel with one big button. The original file is never overwritte
 undone.
 
 There is no account, no server, no telemetry and no AI. OCR runs on Apple Vision. Office conversions
-run natively where macOS can do them and through an optional, auto-detected LibreOffice helper where it cannot
-(see `docs/specs/features.md` §3).
+run natively where macOS can do them, through LibreOffice when it is installed on the Mac, and through Word, Excel,
+PowerPoint, Pages, Numbers or Keynote when they are (see `docs/specs/features.md` §3). The only network traffic is
+listed in [`PRIVACY.md`](PRIVACY.md).
 
-## Status
-
-The product is specified and designed; the build is split into the work packages in `docs/ARCHITECTURE.md`.
-
-| Document | What it is |
-|---|---|
-| `docs/specs/ux.md` | The UX design: window anatomy, the Tools sheet, every tool panel, wireframes, metrics, type, colour, motion, empty states and error copy. The grandma test. |
-| `docs/specs/features.md` | Every feature (Acrobat's set plus the required list), with behaviour, local implementation approach and engine. |
-| `docs/ARCHITECTURE.md` | Modules, Core contracts, the `Services` registry, engines, and parallel work packages with briefs. |
-| `docs/mockups/` | High-fidelity HTML/CSS mockups of the main screens, rendered to PNG. |
-
-## Building (once the work packages land)
+## Install
 
 ```sh
-swift build -c release          # Command Line Tools only; no Xcode
-swift run SuperPDFSelfTest      # headless checks
-scripts/build-app.sh            # Super PDF.app
+curl -fsSL https://udsy19.github.io/super-pdf/install.sh | bash
 ```
 
-Requires macOS 14 or later, on Apple silicon or Intel.
+or download `SuperPDF.dmg` from the [latest release](https://github.com/udsy19/super-pdf/releases/latest) and drag
+Super PDF into Applications. The app is signed with its own certificate, not notarised: the first time, macOS asks you
+to confirm in System Settings › Privacy & Security (the DMG's notes say how). It keeps itself up to date from this
+repository's releases; Settings › Privacy turns that off, and Super PDF › Check for Updates… always works.
+
+Uninstall: `curl -fsSL https://udsy19.github.io/super-pdf/install.sh | bash -s -- --uninstall`.
+
+## What's in the box
+
+| | |
+|---|---|
+| **The window** | Preview's: thumbnails, table of contents, highlights and notes, bookmarks, attachments, search; the page organiser; the markup bar; reader mode and read aloud. |
+| **Tools** (⌘T) | 52 tiles in eight sections — Pages, Convert, Edit, Mark up, Sign & fill, Protect, Fix & check, Scan — each one panel with one button; the document itself is the live preview. |
+| **Do this to many files** | Any of the file-level tools on a folder, in order; save the steps as a routine. |
+| **Finder** | Quick Actions: Combine in Super PDF, Make Smaller, Convert to PDF, Recognise Text. Services: Open Selection as PDF. Print dialogs: Save to Super PDF. |
+| **Links** | `superpdf://open?file=/path.pdf` and `superpdf://tool/make-smaller?file=/a.pdf&file=/b.pdf`. |
+
+## Building
+
+Command Line Tools only (no Xcode), macOS 14 or later, Apple silicon or Intel.
+
+```sh
+scripts/build-qpdf.sh fetch     # once per checkout: the pinned QPDF xcframework into Vendor/ (needs gh)
+swift build
+swift run SuperPDFSelfTest      # headless checks, including the end-to-end chains through the real modules
+scripts/signing-setup.sh        # once: a project-local signing identity in .signing/ (keeps privacy grants)
+scripts/build-app.sh            # build/Super PDF.app, with static launch checks; --debug for a quick build
+scripts/e2e.sh                  # the real app driven through Accessibility on throwaway data (needs Accessibility)
+```
+
+`scripts/make-dmg.sh` makes the universal DMG; `scripts/release.sh <version>` publishes it (with the SHA-256 line the
+updater checks). The design lives in `docs/`: [UX](docs/specs/ux.md), [features](docs/specs/features.md),
+[architecture](docs/ARCHITECTURE.md) and [mockups](docs/mockups/).
 
 ## Licence
 
-MIT. Third-party code keeps its own licences: QPDF (Apache-2.0) and libjpeg-turbo (IJG, BSD-3-Clause, zlib), listed
-in `THIRD_PARTY_NOTICES.md`; swift-certificates and swift-asn1 (Apache-2.0). LibreOffice (MPL-2.0) is never
-bundled; it is detected on the Mac or installed by the user on request.
+MIT. Third-party code keeps its own licences, listed in full in `THIRD_PARTY_NOTICES.md` (shipped inside the app):
+QPDF (Apache-2.0), libjpeg-turbo (IJG, BSD-3-Clause, zlib), swift-certificates, swift-asn1 and swift-crypto with
+BoringSSL (Apache-2.0). LibreOffice (MPL-2.0) is never bundled or downloaded by Super PDF; an installed copy is used
+when there is one.

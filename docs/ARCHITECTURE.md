@@ -54,7 +54,8 @@ Sources/
                      booklet, contact sheet
   ConvertKit/        conversion registry runtime (features §3.2): native importers (NSAttributedString, TextKit
                      pagination, WebKit HTML/EPUB/Markdown, ImageIO, CSV, ZIP, EML, own xlsx/pptx/hwpx readers),
-                     LibreOffice helper (detect, install, run), app automation (Word/Excel/PowerPoint/Pages/Numbers/
+                     LibreOffice helper (detect an installed copy, run it headless; "Get LibreOffice" opens its
+                     download page, nothing is downloaded or installed), app automation (Word/Excel/PowerPoint/Pages/Numbers/
                      Keynote), Quick Look fallback; exporters: images, text, HTML, EPUB, docx/xlsx/pptx writers
                      (OOXML), PDF/A + verifier, PDF/X, comments/forms data (XFDF/FDF/CSV/JSON)
   EditKit/           edit text & images (content-stream block editing, font substitution, subsetting), add text/
@@ -78,15 +79,18 @@ Sources/
                      + auto-tag + reading order editor + alt text
   ScanKit/           Continuity Camera (NSMenuItemImportFromDeviceIdentifier + NSServicesMenuRequestor), Image Capture
                      scanners (ICScannerDevice/IKScannerDeviceView), document detection from photos (Vision), clean-up
-  BatchKit/          "Do this to many files": step pipelines over the tool registry, routines, Finder Quick Actions
-                     (app extension target), App Intents (one per file-level tool), PDF Services print item
-  SettingsKit/       settings window panes (ux §6.6), converters pane (LibreOffice
-                     install/remove, detected apps), signatures pane, privacy pane
+  BatchKit/          "Do this to many files": step pipelines over the tool registry (each step through its tile's
+                     own provider), routines, the tile's panel; the steps a Quick Action asks of several files
+  SettingsKit/       settings window panes (ux §6.6), converters pane (LibreOffice found or Get LibreOffice, Choose…,
+                     detected apps), signatures pane, privacy pane (the network list, updates switch and status)
   UpdateKit/, PDFModelKit/
                      engines (see "Engines"): no app policy
   SuperPDF/          app target: launch sequence, module wiring, Services.updates, main menu
-                     (Preview's tree + Tools, ux §8), superpdf:// routing, Dock menu, open/drop handling
-  SuperPDFQuickActions/  Finder extension target (Combine, Make smaller, Convert to PDF, Recognise text)
+                     (Preview's tree + Tools, ux §8), superpdf:// routing, Dock menu, Services menu, open/drop handling,
+                     New from Clipboard, the PDF Services item
+  SuperPDFQuickActions/  Finder Quick Actions (Combine, Make smaller, Convert to PDF, Recognise text): one executable
+                     entered through NSExtensionMain, packaged as four sandboxed action extensions that hand the files
+                     to the app as superpdf:// links
   SuperPDFSelfTest/  headless checks (`swift run SuperPDFSelfTest`), per module, plus engine smoke tests and benches
 ```
 
@@ -198,15 +202,44 @@ What `SuperPDFCore` actually declares, where it differs from or adds to the tabl
   app or URL (inject fake openers); `makeDocument(pages:)` / `makePDF(pages:)` build fixtures; `SUPERPDF_SELFTEST_ONLY`
   filters cases. Run `scripts/build-qpdf.sh fetch` once per checkout before `swift build`.
 
+### Contract notes (wave C and WP16)
+
+What the work packages after WP1 added to `SuperPDFCore`, beyond the notes above:
+
+- **Saves and engines.** `DocumentHandle.contents` (`DocumentContents`, DocumentKit's baseline) and
+  `PDFSource.fingerprint()` (engines' caches); MarkupKit's `Annotating.annotationRestorer(for:)` returns an
+  `AnnotationRestorer` (an id key and a closure over the QPDF objects a save writes) that puts back what PDFKit can't
+  hold; `Annotating` also answers the Annotate menu (`perform(_:in:)`, `validate(_:in:)`, `isMarkupBarVisible(in:)`).
+  `FormServicing.exportData` is async.
+- **Converters.** `HelperManaging.getLibreOffice()` replaces `installLibreOffice()`/`removeLibreOffice()`;
+  `DownloadProgress` and `HelperStatus.installing/failed` are gone; `Strings.Errors.getLibreOffice` replaces "Install…".
+- **Panels.** `ToolControl.toggle` has an optional `rowLabel`; `ToolPanel.performActionNotification` lets a mode
+  tool's page interaction reach its panel (`handle(action:)`); `OutputSuffix.keepsOriginalUntouched` drives the
+  "the original is untouched" line; `Strings.Panel.scope(_:pageCount:)`. WP16: `ToolControl.files` has `pagesPerFile`
+  (each row's "Pages: All ▾", kept under `ToolValues.pageChoicesKey`), and ToolsKit puts the files a tool was opened
+  with into its first list that takes several, so `ToolValues.queue(_:inputs:)` is a tool's whole list.
+- **Crop (WP16).** `PageInsets` (margins as seen, with `kept(in:rotation:)` and its inverse; PagesKit's own type and
+  crop maths moved here) and `ViewerPresenting.showCropHandles(_:in:)` with `CropHandles`: ViewerKit draws the handles
+  over the pages in scope and reports the margins a drag ends with; they go when the panel closes.
+- **The app (WP16).** `AppRoute` (`superpdf://open?file=…`, `superpdf://tool/<tile>?file=…`) and `QuickAction` (the
+  four Finder actions, their names, bundle ids and tools), shared by the app and the Quick Actions extension.
+  `UpdateChecking.checkNow()` checks even when the automatic checks are off (what it stages installs on quit or from
+  `installNow()`, never on its own). App Intents are not built: the Command Line Tools have no
+  `appintentsmetadataprocessor`, so Shortcuts could not see them; Shortcuts can open `superpdf://` links instead.
+
 ## Launch sequence
 
-1. `SuperPDFCore` bootstrap: paths, Defaults migration, logging.
+1. `SuperPDFCore` bootstrap: paths, Defaults migration, logging. `SUPERPDF_DATA_DIR` (and `SUPERPDF_DEFAULTS_SUITE`)
+   point Application Support (and the settings) at throwaway places for `scripts/e2e.sh`; that run starts no updater
+   and makes no offer.
 2. `<Module>Module.install()` in dependency order: DocumentKit, LayoutKit, RenderKit, PagesKit, ConvertKit, EditKit,
    MarkupKit, FormsKit, SignKit, ProtectKit, FixKit, ScanKit, BatchKit, ToolsKit (collects providers and verifies every
    catalog tile has exactly one provider — a self-test too), ViewerKit, SettingsKit.
-3. App target: `Services.updates`; main menu; PDF Services item
-   offer (once); Quick Actions registration.
-4. Open the files passed in, else the welcome window. Then `Services.updates.start()`.
+3. App target: `Services.updates` (UpdateKit on `udsy19/super-pdf`, asset `SuperPDF`); main menu; the Services
+   provider ("Open Selection as PDF"); `NSUpdateDynamicServices`; the bundle registered with LaunchServices so Finder
+   finds the Quick Actions.
+4. Open the files and links passed in (several files ask "Combine these 3 files?"), else the welcome window. The PDF
+   Services item is offered once. Then `Services.updates.start()`.
 
 ## End-to-end tool flow
 
@@ -217,7 +250,8 @@ applies the output policy → ViewerKit shows the result banner → undo stack /
 
 ## Data
 
-- `~/Library/Application Support/Super PDF/Helpers/LibreOffice.app` (+ `lo-profile`), `Requests/<id>/` (signing
+- `~/Library/Application Support/Super PDF/Helpers/lo-profile` (the installed LibreOffice's private profile),
+  `update.json` (the updater's bookkeeping), `Requests/<id>/` (signing
   packages, returns, audit), `Signatures/` (Keychain-referenced images), `Index/<folder-hash>.sqlite` (folder search,
   FTS5), `Routines/*.json`, `Stamps/`.
 - Per-document view state in the document's extended attributes (`com.udsy.superpdf.viewstate`), never inside the PDF.
@@ -229,7 +263,8 @@ System frameworks: AppKit, SwiftUI (panels and settings), PDFKit, Quartz/ImageKi
 VisionKit, ImageCaptureCore, WebKit, AVFoundation (speech), Contacts, Security, CryptoKit, Compression, SQLite3,
 UniformTypeIdentifiers, AppIntents. Packages: QPDF xcframework (binaryTarget built by `scripts/build-qpdf.sh`, published
 on this repo's Releases, fetched into `Vendor/` by `scripts/build-qpdf.sh fetch`), `swift-certificates` 1.21.0 +
-`swift-asn1` 1.7.3 (Apple, Apache-2.0, pinned exactly). No other third-party code. Licences in `THIRD_PARTY_NOTICES.md`.
+`swift-asn1` 1.7.3 (Apple, Apache-2.0, pinned exactly), and through them `swift-crypto` 5.0.3 with its BoringSSL
+(Apache-2.0). No other third-party code. Licences in `THIRD_PARTY_NOTICES.md`, which the app carries.
 
 ## Work packages
 
@@ -305,8 +340,8 @@ labels, Booklet, Resize). Tests: page-op results on fixtures, split naming, blan
 
 **WP7 — ConvertKit** (heavy). `Sources/ConvertKit/**`. Converter registry runtime with availability detection
 (features §3.2 table), native importers (NSAttributedString/TextKit pagination, WebKit for HTML/EPUB/Markdown, ImageIO,
-CSV/TSV, ZIP recursion, EML, own xlsx/pptx/hwpx readers), LibreOffice helper (detect, guarded install from the
-official DMG with SHA-256 + signature check, private profile, timeout), app automation via Apple Events with the
+CSV/TSV, ZIP recursion, EML, own xlsx/pptx/hwpx readers), LibreOffice helper (detect an installed copy, private
+profile, timeout; the planned guarded DMG install was dropped for "Get LibreOffice", features §3.2), app automation via Apple Events with the
 "will open briefly" notice, Quick Look fallback; exporters: images (#53), text/HTML/EPUB (#54–55), docx/xlsx/pptx
 writers over LayoutKit (#50–52), PDF/A + verifier (#56, #93), PDF/X (#57), data exports (#59). Panels of ux §5.3
 (To Word…, To images, For archiving, Images → PDF, Any file → PDF). Tests: each importer against fixtures (no network),
