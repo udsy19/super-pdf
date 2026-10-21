@@ -78,9 +78,10 @@ let package = Package(
             name: "SuperPDF",
             dependencies: ["SuperPDFCore", "UpdateKit"] + (sharedModules + modules).map { .target(name: $0) },
             path: "Sources/SuperPDF"),
-        // Finder Quick Actions (Combine, Make smaller, Convert to PDF, Recognise text); packaged as an app extension by
-        // scripts/build-app.sh (WP16).
-        .executableTarget(name: "SuperPDFQuickActions", dependencies: ["SuperPDFCore"], path: "Sources/SuperPDFQuickActions"),
+        // Finder Quick Actions (Combine, Make smaller, Convert to PDF, Recognise text): one executable that
+        // scripts/build-app.sh packages as four app extensions, entered through NSExtensionMain as Xcode links appexes.
+        .executableTarget(name: "SuperPDFQuickActions", dependencies: ["SuperPDFCore"], path: "Sources/SuperPDFQuickActions",
+                          linkerSettings: [.unsafeFlags(["-Xlinker", "-e", "-Xlinker", "_NSExtensionMain"])]),
         // Headless checks (Command Line Tools have no XCTest): `swift run SuperPDFSelfTest`.
         .executableTarget(
             name: "SuperPDFSelfTest",

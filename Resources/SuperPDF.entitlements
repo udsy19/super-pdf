@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- No App Sandbox: tools write next to the files people open, run an installed LibreOffice and drive Office apps.
+	     The hardened runtime still asks for each device and kind of data, so each one used is declared here. -->
+	<!-- Scan from a photo, signatures held up to the camera (Info.plist NSCameraUsageDescription). -->
+	<key>com.apple.security.device.camera</key><true/>
+	<!-- Voice notes on a page (NSMicrophoneUsageDescription). -->
+	<key>com.apple.security.device.audio-input</key><true/>
+	<!-- AutoFill from the Contacts card, signers for Request signatures (NSContactsUsageDescription). -->
+	<key>com.apple.security.personal-information.addressbook</key><true/>
+	<!-- Word, Excel, PowerPoint, Pages, Numbers and Keynote export through Apple Events (NSAppleEventsUsageDescription). -->
+	<key>com.apple.security.automation.apple-events</key><true/>
+</dict>
+</plist>

@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>Combine in Super PDF</string>
+	<key>CFBundleName</key>
+	<string>CombineInSuperPDF</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.udsy.superpdf.quickactions.CombineInSuperPDF</string>
+	<key>CFBundleExecutable</key>
+	<string>SuperPDFQuickActions</string>
+	<key>CFBundlePackageType</key>
+	<string>XPC!</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>SuperPDFQuickAction</key>
+	<string>combine</string>
+	<key>NSExtension</key>
+	<dict>
+		<key>NSExtensionPointIdentifier</key>
+		<string>com.apple.services</string>
+		<key>NSExtensionPrincipalClass</key>
+		<string>QuickActionRequestHandler</string>
+		<key>NSExtensionAttributes</key>
+		<dict>
+			<key>NSExtensionActivationRule</key>
+			<string>SUBQUERY(extensionItems, $extensionItem, SUBQUERY($extensionItem.attachments, $attachment, ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.item").@count &gt;= 1).@count &gt;= 1</string>
+			<key>NSExtensionServiceAllowsFinderPreviewItem</key>
+			<true/>
+			<key>NSExtensionServiceAllowsTouchBarItem</key>
+			<false/>
+			<key>NSExtensionServiceFinderPreviewLabel</key>
+			<string>Combine in Super PDF</string>
+			<key>NSExtensionServiceFinderPreviewIconName</key>
+			<string>NSActionTemplate</string>
+		</dict>
+	</dict>
+</dict>
+</plist>

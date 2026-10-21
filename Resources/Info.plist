@@ -1,0 +1,275 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleName</key>
+	<string>Super PDF</string>
+	<key>CFBundleDisplayName</key>
+	<string>Super PDF</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.udsy.superpdf</string>
+	<key>CFBundleExecutable</key>
+	<string>SuperPDF</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundleIconName</key>
+	<string>AppIcon</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.productivity</string>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSSupportsAutomaticGraphicsSwitching</key>
+	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>© 2026 Udaya Vijay Anand. MIT licence.</string>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>PDF document</string>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.adobe.pdf</string>
+			</array>
+			<key>NSDocumentClass</key>
+			<string>SuperPDFDocument</string>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Word documents</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>org.openxmlformats.wordprocessingml.document</string>
+				<string>com.microsoft.word.doc</string>
+				<string>org.oasis-open.opendocument.text</string>
+				<string>public.rtf</string>
+				<string>com.apple.rtfd</string>
+				<string>com.apple.flat-rtfd</string>
+				<string>public.plain-text</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Web pages</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.html</string>
+				<string>com.apple.webarchive</string>
+				<string>public.svg-image</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Spreadsheets</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>org.openxmlformats.spreadsheetml.sheet</string>
+				<string>com.microsoft.excel.xls</string>
+				<string>org.oasis-open.opendocument.spreadsheet</string>
+				<string>public.comma-separated-values-text</string>
+				<string>public.tab-separated-values-text</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Presentations</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>org.openxmlformats.presentationml.presentation</string>
+				<string>com.microsoft.powerpoint.ppt</string>
+				<string>org.oasis-open.opendocument.presentation</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>iWork documents</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.apple.iwork.pages.sffpages</string>
+				<string>com.apple.iwork.numbers.sffnumbers</string>
+				<string>com.apple.iwork.keynote.sffkey</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Books and text</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>org.idpf.epub-container</string>
+				<string>net.daringfireball.markdown</string>
+				<string>public.json</string>
+				<string>public.xml</string>
+				<string>org.libreoffice.hwp-document</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Archives and mail</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.zip-archive</string>
+				<string>com.apple.mail.email</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Pictures</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.image</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>PostScript</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.adobe.postscript</string>
+				<string>com.adobe.encapsulated-postscript</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Other documents</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>CFBundleTypeExtensions</key>
+			<array>
+				<string>wordml</string>
+				<string>hwpx</string>
+				<string>msg</string>
+			</array>
+		</dict>
+	</array>
+	<key>UTImportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>org.libreoffice.hwp-document</string>
+			<key>UTTypeDescription</key>
+			<string>Hangul document</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+				<string>public.content</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>hwp</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.udsy.superpdf</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>superpdf</string>
+			</array>
+		</dict>
+	</array>
+	<key>NSServices</key>
+	<array>
+		<dict>
+			<key>NSMenuItem</key>
+			<dict>
+				<key>default</key>
+				<string>Open Selection as PDF</string>
+			</dict>
+			<key>NSMessage</key>
+			<string>openSelectionAsPDF</string>
+			<key>NSPortName</key>
+			<string>Super PDF</string>
+			<key>NSSendTypes</key>
+			<array>
+				<string>public.utf8-plain-text</string>
+				<string>public.rtf</string>
+				<string>public.tiff</string>
+				<string>public.png</string>
+				<string>com.adobe.pdf</string>
+			</array>
+			<key>NSRequiredContext</key>
+			<dict/>
+		</dict>
+	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>Super PDF uses the camera when you scan a page from a photo or hold up a signature to save it.</string>
+	<key>NSCameraUseContinuityCameraDeviceType</key>
+	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Super PDF uses the microphone when you record a voice note on a page.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>Super PDF reads your contact card to fill in forms and sign notes with your name, and finds the people you ask to sign.</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Super PDF asks Word, Excel, PowerPoint, Pages, Numbers or Keynote to export a file as a PDF when you convert one.</string>
+	<key>NSDesktopFolderUsageDescription</key>
+	<string>Super PDF saves the files it makes next to the originals.</string>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>Super PDF saves the files it makes next to the originals.</string>
+	<key>NSDownloadsFolderUsageDescription</key>
+	<string>Super PDF saves the files it makes next to the originals.</string>
+	<key>NSRemovableVolumesUsageDescription</key>
+	<string>Super PDF saves the files it makes next to the originals.</string>
+</dict>
+</plist>

@@ -77,6 +77,5 @@ enum MainMenu {
         .minimize: #selector(NSWindow.performMiniaturize(_:)),
         .zoomWindow: #selector(NSWindow.performZoom(_:)),
         .bringAllToFront: #selector(NSApplication.arrangeInFront(_:)),
-        .help: #selector(NSApplication.showHelp(_:)),
     ]
 }

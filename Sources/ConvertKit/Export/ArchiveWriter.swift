@@ -4,21 +4,31 @@ import PDFModelKit
 import RenderKit
 import SuperPDFCore
 
-// For archiving (features #56 PDF/A, #57 PDF/X). Quartz re-renders the pages into a PDF/A (or OutputIntent) context:
-// fonts embedded, sRGB OutputIntent, no scripts, no encryption. A QPDF pass then makes the file say what it is and keeps
-// what the re-render drops: XMP identification matching /Info, the bookmarks, PDF/A-3's attachments. PDF/A-1 can't hold
-// transparency, so pages that use it become pictures; then the built-in check (#93) reads the result.
+// For archiving (features #56 PDF/A, #57 PDF/X). First the file's own pages are kept as they are and only what an
+// archive can't hold changes (scripts, encryption, attachments the level forbids, hidden or non-printing notes), with the
+// OutputIntent, identification and, for a tagged file, MarkInfo added; when the built-in check (#93) passes that, it is
+// the result, so text (a recognised scan's text layer), tags and layout stay exactly as they were. Otherwise Quartz
+// re-renders the pages into a PDF/A context: fonts embedded, sRGB OutputIntent, no scripts, no encryption, and a QPDF
+// pass makes the file say what it is and keeps what the re-render drops: XMP identification matching /Info, the
+// bookmarks, PDF/A-3's attachments. PDF/A-1 can't hold transparency, so pages that use it become pictures.
 //
-// The accessible "a" levels of a tagged file skip the re-render: it would drop the marked content the tags point at.
-// The file's own pages are kept and only what an archive can't hold changes (scripts, encryption, attachments the level
-// forbids, hidden or non-printing notes), with the OutputIntent, MarkInfo and identification added. What that can't fix
-// (a font that isn't inside the file, PDF/A-1's transparency) the check reports.
+// The accessible "a" levels of a tagged file always keep the pages: a re-render drops the marked content the tags point
+// at. What keeping them can't fix (a font that isn't inside the file, PDF/A-1's transparency) the check reports.
 
 enum ArchiveWriter {
     /// Writes `source` as PDF/A at `level` and returns what the PDF/A check still finds in the result (empty: it passes).
     static func writePDFA(_ source: PDFSource, level: PDFALevel, to url: URL) throws -> [PDFAProblem] {
-        if level.requiresTags, let tagged = try? PDFModel(source), isTagged(tagged) {
-            return try writeKeepingTags(tagged, level: level, to: url)
+        if let model = try? PDFModel(source) {
+            let keepsTags = level.requiresTags && isTagged(model)
+            let kept = keepsTags ? url : ArchiveTemp.file()
+            let problems = try writeKeepingPages(model, level: level, to: kept)
+            if keepsTags { return problems }
+            if problems.isEmpty {
+                if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
+                try FileManager.default.moveItem(at: kept, to: url)
+                return []
+            }
+            try? FileManager.default.removeItem(at: kept)
         }
         let rendered = ArchiveTemp.file()
         defer { try? FileManager.default.removeItem(at: rendered) }
@@ -67,9 +77,10 @@ enum ArchiveWriter {
         (try? PDFModel(source)).map(isTagged) ?? false
     }
 
-    /// The "a" levels of a tagged file: its pages and tags as they are, made into an archive copy.
-    private static func writeKeepingTags(_ model: PDFModel, level: PDFALevel, to url: URL) throws -> [PDFAProblem] {
+    /// The file's own pages (and tags) as they are, made into an archive copy; what the check still finds.
+    private static func writeKeepingPages(_ model: PDFModel, level: PDFALevel, to url: URL) throws -> [PDFAProblem] {
         let part = level.archivePart
+        let tagged = isTagged(model)
         removeActions(model)
         ensureOutputIntent(model)
         if part == 1 {
@@ -98,7 +109,7 @@ enum ArchiveWriter {
                 annotation.set("F", .integer((flags | 4) & ~(1 | 2 | 32)))
             }
         }
-        model.root.set("MarkInfo", .dictionary(["Marked": .bool(true)]))
+        if tagged { model.root.set("MarkInfo", .dictionary(["Marked": .bool(true)])) }
         setMetadata(model, original: model, identification: [("pdfaid:part", String(part)), ("pdfaid:conformance", level.archiveConformance)],
                     namespaces: ["pdfaid": "http://www.aiim.org/pdfa/ns/id/"])
         // Part 1 has no object streams and no LZW: streams are decoded and compressed again with Flate.

@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: Build & self-tests
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: swift --version
+      - name: QPDF xcframework (the pinned release asset, checked against Package.swift)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/build-qpdf.sh fetch
+      - name: Build
+        run: swift build
+      - name: Self-tests
+        # Nothing here launches the app or opens a window; cases that need a signed build or LibreOffice skip themselves.
+        run: .build/debug/SuperPDFSelfTest
+      - name: App bundle (ad hoc signed) and its static launch checks
+        run: ./scripts/build-app.sh --debug

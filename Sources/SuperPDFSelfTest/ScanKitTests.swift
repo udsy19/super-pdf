@@ -86,6 +86,9 @@ private func photo(of page: CGImage, corners: [CGPoint], canvas: CGSize = CGSize
 
 private let photoCorners = [CGPoint(x: 0.30, y: 0.86), CGPoint(x: 0.68, y: 0.84), CGPoint(x: 0.69, y: 0.18), CGPoint(x: 0.29, y: 0.20)]
 
+/// A photo of a page of text lying on a desk: the scan fixture of the app's end-to-end checks (AppTests).
+func scanFixturePhoto() -> Data { photo(of: renderPage(), corners: photoCorners) }
+
 /// The page turned `degrees` counter-clockwise on white, same size (a crooked sheet on a scanner).
 private func tilted(_ page: CGImage, degrees: Double) -> CGImage {
     let image = CIImage(cgImage: page)

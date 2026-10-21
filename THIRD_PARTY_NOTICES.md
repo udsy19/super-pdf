@@ -1,7 +1,7 @@
 # Third-party notices
 
 Super PDF is MIT-licensed (see `LICENSE`). It ships or links the third-party code below. The texts that a binary
-distribution must carry are reproduced here in full.
+distribution must carry are reproduced here in full; the app carries this file in `Contents/Resources`.
 
 ## QPDF 12.4.2 — Apache License 2.0
 
@@ -134,6 +134,228 @@ which is under the zlib License (subsumed by the IJG License in the context of t
 
 QPDF's Flate support uses the zlib that ships with macOS (`libz` from the SDK, linked dynamically). Super PDF does not
 redistribute zlib.
+
+## swift-certificates 1.21.0 — Apache License 2.0
+
+Linked statically (X.509 certificates and CMS signatures for signing and verifying, features §3.6; source:
+https://github.com/apple/swift-certificates, tag 1.21.0). Licence: Apache License 2.0 below. Its `NOTICE.txt`:
+
+                                The SwiftCertificates Project
+                                =====================
+
+    Please visit the SwiftCertificates web site for more information:
+
+      * https://github.com/apple/swift-certificates
+
+    Copyright 2022 The SwiftCertificates Project
+
+    The SwiftCertificates Project licenses this file to you under the Apache License,
+    version 2.0 (the "License"); you may not use this file except in compliance
+    with the License. You may obtain a copy of the License at:
+
+      https://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+    License for the specific language governing permissions and limitations
+    under the License.
+
+    Also, please refer to each LICENSE.txt file, which is located in
+    the 'license' directory of the distribution file, for the license terms of the
+    components that this product depends on.
+
+    ---
+
+    This product contains derivations of various scripts from SwiftNIO.
+
+      * LICENSE (Apache License 2.0):
+        * https://www.apache.org/licenses/LICENSE-2.0
+      * HOMEPAGE:
+        * https://github.com/apple/swift-nio
+
+    ---
+
+    This product contains test data derived from Webpki.
+
+      * LICENSE (ISC):
+        * https://github.com/briansmith/webpki/blob/main/LICENSE
+      * HOMEPAGE:
+        * https://github.com/briansmith/webpki/
+
+    ---
+
+    This product contains derivations of various ASN1 types from SwiftASN1.
+
+      * LICENSE (Apache License 2.0):
+        * https://www.apache.org/licenses/LICENSE-2.0
+      * HOMEPAGE:
+        * https://github.com/apple/swift-asn1
+
+    ---
+
+    This product contains test vectors from pyca/cryptography.
+
+      * LICENSE (Apache License 2.0):
+        * https://github.com/pyca/cryptography/blob/main/LICENSE.APACHE
+      * HOMEPAGE:
+        * https://github.com/pyca/cryptography
+
+    ---
+
+    This product contains code to calculate and decompose UNIX timestamps derived from musl libc.
+
+      * LICENSE (MIT):
+        * https://git.musl-libc.org/cgit/musl/tree/COPYRIGHT
+      * HOMEPAGE:
+        * https://musl.libc.org
+
+    ---
+
+    This product contains derivations of various scripts from SwiftNIO SSH.
+
+      * LICENSE (Apache License 2.0):
+        * https://www.apache.org/licenses/LICENSE-2.0
+      * HOMEPAGE:
+        * https://github.com/apple/swift-nio-ssh
+
+    ---
+
+    This product contains derivations of various scripts from Swift OpenAPI Generator.
+
+      * LICENSE (Apache License 2.0):
+        * https://www.apache.org/licenses/LICENSE-2.0
+      * HOMEPAGE:
+        * https://github.com/apple/swift-openapi-generator
+
+## swift-asn1 1.7.3 — Apache License 2.0
+
+Linked statically (DER encoding for swift-certificates; source: https://github.com/apple/swift-asn1, tag 1.7.3).
+Licence: Apache License 2.0 below. Its `NOTICE.txt`:
+
+                                The SwiftASN1 Project
+                                =====================
+
+    Please visit the SwiftASN1 web site for more information:
+
+      * https://github.com/apple/swift-asn1
+
+    Copyright 2022 The SwiftASN1 Project
+
+    The SwiftASN1 Project licenses this file to you under the Apache License,
+    version 2.0 (the "License"); you may not use this file except in compliance
+    with the License. You may obtain a copy of the License at:
+
+      https://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+    License for the specific language governing permissions and limitations
+    under the License.
+
+    Also, please refer to each LICENSE.txt file, which is located in
+    the 'license' directory of the distribution file, for the license terms of the
+    components that this product depends on.
+
+    ---
+
+    This product contains derivations of various scripts from SwiftNIO.
+
+      * LICENSE (Apache License 2.0):
+        * https://www.apache.org/licenses/LICENSE-2.0
+      * HOMEPAGE:
+        * https://github.com/apple/swift-nio
+
+    ---
+
+    This product contains derivations of various scripts from Swift OpenAPI Generator.
+
+      * LICENSE (Apache License 2.0):
+        * https://www.apache.org/licenses/LICENSE-2.0
+      * HOMEPAGE:
+        * https://github.com/apple/swift-openapi-generator
+
+## swift-crypto 5.0.3 — Apache License 2.0
+
+Linked statically as a dependency of swift-certificates (source: https://github.com/apple/swift-crypto, tag 5.0.3).
+Licence: Apache License 2.0 below. Its `NOTICE.txt`:
+
+                                The SwiftCrypto Project
+                                =======================
+
+    Please visit the SwiftCrypto web site for more information:
+
+      * https://github.com/apple/swift-crypto
+
+    Copyright 2019 The SwiftCrypto Project
+
+    The SwiftCrypto Project licenses this file to you under the Apache License,
+    version 2.0 (the "License"); you may not use this file except in compliance
+    with the License. You may obtain a copy of the License at:
+
+      https://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+    License for the specific language governing permissions and limitations
+    under the License.
+
+    Also, please refer to each LICENSE.<component>.txt file, which is located in
+    the 'license' directory of the distribution file, for the license terms of the
+    components that this product depends on.
+
+    -------------------------------------------------------------------------------
+
+    This product contains test vectors from Google's wycheproof project.
+
+      * LICENSE (Apache License 2.0):
+        * https://github.com/C2SP/wycheproof/blob/31387e2cd596587c859c611027b6a44d2e2b65ff/LICENSE
+      * HOMEPAGE:
+        * https://github.com/google/wycheproof
+
+    ---
+
+    This product contains a derivation of various files from SwiftNIO.
+
+      * LICENSE (Apache License 2.0):
+        * https://www.apache.org/licenses/LICENSE-2.0
+      * HOMEPAGE:
+        * https://github.com/apple/swift-nio
+
+### BoringSSL (inside swift-crypto) — Apache License 2.0
+
+swift-crypto's `CCryptoBoringSSL` is derived from BoringSSL (https://boringssl.googlesource.com/boringssl, revision
+0226f30467f540a3f62ef48d453f93927da199b6) and is linked in. Its files carry, for example:
+
+    Copyright 1995-2016 The OpenSSL Project Authors. All Rights Reserved.
+
+    Licensed under the Apache License, Version 2.0 (the "License");
+    you may not use this file except in compliance with the License.
+    You may obtain a copy of the License at
+
+        https://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+
+Its `third_party/fiat` code comes from fiat-crypto (https://github.com/mit-plv/fiat-crypto), offered under the MIT,
+Apache 2.0 or BSD 1-Clause licence at the user's choice; Super PDF uses it under the Apache License 2.0 below.
+
+## Fonts
+
+Super PDF bundles no fonts. It draws with the fonts of macOS (SF Pro for the interface; the script faces a typed
+signature can use, which are turned into a picture and never copied), so no font licence travels with the app.
+
+## LibreOffice (not included)
+
+Super PDF neither bundles nor downloads LibreOffice. When LibreOffice is installed on the Mac, Super PDF runs that copy
+to convert some Office formats; "Get LibreOffice" opens its download page in the browser. LibreOffice is made by The
+Document Foundation and licensed under the Mozilla Public License 2.0 (https://www.libreoffice.org/about-us/licenses/).
 
 ## Apache License 2.0
 
