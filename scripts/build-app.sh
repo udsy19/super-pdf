@@ -19,7 +19,9 @@ PRODUCTS=("$APP_EXE" "$EXT_EXE")
 if [ "${UNIVERSAL:-0}" = 1 ]; then
   # Build each architecture separately (the CLT toolchain has no multi-arch build) and merge with lipo.
   for arch in arm64 x86_64; do
-    for product in "${PRODUCTS[@]}"; do swift build -c "$CONFIG" --product "$product" --triple "$arch-apple-macosx14.0"; done
+    # The Command Line Tools ship the Swift back-deployment compatibility libraries for arm64 only, and packages built for
+    # older systems (swift-crypto, swift-certificates) ask for them; macOS 14 has everything they back-deploy, so skip them.
+    for product in "${PRODUCTS[@]}"; do swift build -c "$CONFIG" --product "$product" --triple "$arch-apple-macosx14.0" -Xswiftc -runtime-compatibility-version -Xswiftc none; done
   done
   ARM="$(swift build -c "$CONFIG" --triple arm64-apple-macosx14.0 --show-bin-path)"
   INTEL="$(swift build -c "$CONFIG" --triple x86_64-apple-macosx14.0 --show-bin-path)"
