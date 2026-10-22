@@ -118,7 +118,7 @@ drive click "Create signature…"; sleep 1.5
 drive click "Type"; sleep 0.5
 drive fill "Your name" "Udaya Vijay Anand"; sleep 0.5
 drive click "Save signature"; sleep 1.5
-drive click-in "My signature" 0.5 0.12; sleep 0.5
+drive wait-element "My signature" 15; drive click-in "My signature" 0.5 0.12; sleep 0.5
 drive click-page 0.5 0.55; sleep 1
 drive click "Sign and save…"; sleep 1.5
 drive press return

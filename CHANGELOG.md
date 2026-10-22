@@ -2,7 +2,7 @@
 
 All notable changes to Super PDF. Versions follow [Semantic Versioning](https://semver.org).
 
-## [Unreleased]
+## [1.1.1] - 2026-10-22
 
 - Quick Look inside Super PDF: Space on a card in the Combine and Rearrange workspace (Files or Pages), on a sidebar
   thumbnail or on a recent file in the welcome window opens macOS's own preview panel, with its thumbnail strip, Markup,
