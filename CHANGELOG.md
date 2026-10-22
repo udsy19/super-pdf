@@ -2,7 +2,7 @@
 
 All notable changes to Super PDF. Versions follow [Semantic Versioning](https://semver.org).
 
-## [Unreleased]
+## [1.1.0] - 2026-10-22
 
 - A cheerful look: one bright colour per section on every tool's icon, section chips in the Tools sheet, a colour wash
   behind each panel's header, a friendlier welcome window, springy hovers, and a success check that pops in with a
