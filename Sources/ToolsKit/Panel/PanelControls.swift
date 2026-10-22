@@ -31,6 +31,8 @@ struct ControlRow<Content: View>: View {
 struct SegmentedBar: View {
     var options: [ToolOption]
     var selected: String?
+    /// What a screen reader calls the bar ("Format"); empty for the header's switch.
+    var label = ""
     /// The header style: unselected segments in the secondary colour.
     var quietUnselected = false
     var onSelect: ((String) -> Void)?
@@ -57,7 +59,7 @@ struct SegmentedBar: View {
         .padding(2)
         .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Color(Style.faintFill)))
         .accessibilityRepresentation {
-            Picker("", selection: Binding(get: { selected ?? "" }, set: { onSelect?($0) })) {
+            Picker(label, selection: Binding(get: { selected ?? "" }, set: { onSelect?($0) })) {
                 ForEach(options, id: \.id) { Text($0.title).tag($0.id) }
             }
             .pickerStyle(.segmented)
@@ -172,6 +174,7 @@ struct ValueSlider: View {
     var step: Double
     var value: Double
     var format: ToolValueFormat
+    var label = ""
     var onChange: (Double) -> Void
 
     private var fraction: Double { range.upperBound > range.lowerBound ? (value - range.lowerBound) / (range.upperBound - range.lowerBound) : 0 }
@@ -209,6 +212,8 @@ struct ValueSlider: View {
         }
         .accessibilityRepresentation {
             Slider(value: Binding(get: { value }, set: { onChange(snapped($0)) }), in: range, step: step > 0 ? step : 1)
+                .accessibilityLabel(label)
+                .accessibilityValue(Self.format(value, format))
         }
     }
 
@@ -232,6 +237,8 @@ struct PopupField: NSViewRepresentable {
     var selected: String?
     /// Shown instead of the selected option's title (the scope's "3–5").
     var titleOverride: String?
+    /// What a screen reader calls the popup ("Picture sharpness").
+    var label = ""
     var onSelect: (String) -> Void
 
     func makeNSView(context: Context) -> PopupFieldView { PopupFieldView() }
@@ -240,6 +247,7 @@ struct PopupField: NSViewRepresentable {
         view.options = options
         view.selected = selected
         view.title = titleOverride ?? options.first { $0.id == selected }?.title ?? ""
+        view.label = label
         view.onSelect = onSelect
         view.needsDisplay = true
     }
@@ -253,6 +261,7 @@ final class PopupFieldView: NSView {
     var options: [ToolOption] = []
     var selected: String?
     var title = ""
+    var label = ""
     var onSelect: ((String) -> Void)?
 
     override init(frame: NSRect) {
@@ -299,9 +308,10 @@ final class PopupFieldView: NSView {
         let size = (title as NSString).size(withAttributes: attributes)
         (title as NSString).draw(in: NSRect(x: 8, y: (bounds.height - size.height) / 2, width: arrows.minX - 14, height: size.height),
                                  withAttributes: attributes)
-        setAccessibilityValue(title)
     }
 
+    override func accessibilityLabel() -> String? { label }
+    override func accessibilityValue() -> Any? { title }
     override func mouseDown(with event: NSEvent) { showMenu() }
     override func accessibilityPerformPress() -> Bool { showMenu(); return true }
     override var acceptsFirstResponder: Bool { true }
@@ -338,6 +348,8 @@ final class PopupFieldView: NSView {
 
 struct PanelTextField: View {
     var placeholder: String
+    /// What a screen reader calls the field; its placeholder when there is no label.
+    var label: String?
     var value: String
     var isSecure: Bool
     var focusOnAppear: Bool
@@ -356,6 +368,7 @@ struct PanelTextField: View {
         .textFieldStyle(.plain)
         .font(.sp(SPFont.body))
         .focused($focused)
+        .accessibilityLabel(label ?? placeholder)
         .padding(.horizontal, 8)
         .frame(height: SPMetrics.ToolPanel.textFieldHeight)
         .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Color(Style.control)))
@@ -499,7 +512,7 @@ struct PositionGrid: View {
         .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color(Style.control)))
         .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Color(Style.separator), lineWidth: 1))
         .accessibilityRepresentation {
-            Picker("", selection: Binding(get: { selected }, set: onSelect)) {
+            Picker(ToolsKitStrings.position, selection: Binding(get: { selected }, set: onSelect)) {
                 ForEach(0..<(rows * columns), id: \.self) { Text("\($0 / columns + 1), \($0 % columns + 1)").tag($0) }
             }
         }
@@ -571,6 +584,10 @@ struct FilesZone: View {
                               style: StrokeStyle(lineWidth: targeted ? SPMetrics.DropTarget.ring : 1.5, dash: targeted ? [] : [5, 4])))
             .contentShape(Rectangle())
             .onTapGesture(perform: choose)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(label)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction(.default, choose)
             .onDrop(of: [.fileURL], isTargeted: $targeted) { providers in
                 Task { @MainActor in
                     var urls: [URL] = []
@@ -602,8 +619,11 @@ struct FilesZone: View {
         panel.allowsMultipleSelection = allowsMultiple
         panel.canChooseDirectories = false
         panel.allowedContentTypes = types.compactMap { UTType($0) }
-        guard panel.runModal() == .OK else { return }
-        onChange(allowsMultiple ? files + panel.urls : Array(panel.urls.prefix(1)))
+        // Not modal: a screen reader's press returns at once, and the panel is another window to drive.
+        panel.begin { response in
+            guard response == .OK else { return }
+            onChange(allowsMultiple ? files + panel.urls : Array(panel.urls.prefix(1)))
+        }
     }
 }
 
@@ -620,7 +640,7 @@ private struct FilePagesRow: View {
             HStack(spacing: 6) {
                 Text(Strings.Panel.scopeLabel).font(.sp(size: 11)).foregroundStyle(Color(Style.secondary))
                 PopupField(options: [ToolOption("all", ToolsKitStrings.allPages), ToolOption("some", ToolsKitStrings.rangeItem)],
-                           selected: some ? "some" : "all", titleOverride: choice) { id in
+                           selected: some ? "some" : "all", titleOverride: choice, label: ToolsKitStrings.pagesOf(file.lastPathComponent)) { id in
                     if id == "all" {
                         typing = false
                         text = ""
@@ -630,7 +650,6 @@ private struct FilePagesRow: View {
                     }
                 }
                 .frame(width: 140, height: 24)
-                .accessibilityLabel(ToolsKitStrings.pagesOf(file.lastPathComponent))
             }
             .padding(.leading, 22)
             if some {

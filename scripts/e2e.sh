@@ -49,7 +49,21 @@ say "Launching the build on throwaway data"
 SUPERPDF_DATA_DIR="$RUN/data" SUPERPDF_DEFAULTS_SUITE="$SUITE" \
   "$APP/Contents/MacOS/SuperPDF" -ApplePersistenceIgnoreState YES -NSQuitAlwaysKeepsWindows NO >"$RUN/app.log" 2>&1 &
 PID=$!
-drive() { osascript "$ROOT/scripts/e2e-drive.applescript" "$PID" "$@" >/dev/null || fail "step failed: $*"; }
+# Keys, typing and windows go through System Events (e2e-drive.applescript); finding and pressing controls goes through the
+# Accessibility API (e2e-ax.swift, compiled once), which reads the labels SwiftUI controls give VoiceOver.
+mkdir -p "$RUN/bin"
+swiftc -O scripts/e2e-ax.swift -o "$RUN/bin/e2e-ax" 2>"$RUN/bin/swiftc.log" || { cat "$RUN/bin/swiftc.log" >&2; fail "couldn't build scripts/e2e-ax.swift"; }
+sysevents() { osascript "$ROOT/scripts/e2e-drive.applescript" "$PID" "$@"; }
+ax() { "$RUN/bin/e2e-ax" "$PID" "$@"; }
+drive() {
+  case "$1" in
+    wait-element) ax wait "${@:2}" ;;
+    click) ax press "${@:2}" ;;
+    fill) ax focus "$2" && sysevents type "$3" ;; # fill <placeholder> <text>
+    click-in|click-page) ax "$@" ;;
+    *) sysevents "$@" ;;
+  esac >/dev/null || { "$RUN/bin/e2e-ax" "$PID" dump >"$RUN/failed-step-screen.txt" 2>&1; fail "step failed: $* (what was on screen: $RUN/failed-step-screen.txt)"; }
+}
 wait_file() { # path seconds
   for _ in $(seq 1 "$2"); do [ -s "$1" ] && return 0; kill -0 "$PID" 2>/dev/null || fail "the app quit (see $RUN/app.log)"; sleep 1; done
   fail "timed out waiting for $(basename "$1")"
@@ -59,7 +73,7 @@ tools() { # search text: ⌘T, type, Return (the first result opens)
   drive type "$1"; sleep 0.5
   drive press return; sleep 1.5
 }
-for _ in $(seq 1 30); do [ "$(osascript "$ROOT/scripts/e2e-drive.applescript" "$PID" ready 2>/dev/null)" = "true" ] && break; sleep 1; done
+for _ in $(seq 1 30); do [ "$(sysevents ready 2>/dev/null)" = "true" ] && break; sleep 1; done
 sleep 2
 
 say "Open a PDF"
@@ -76,7 +90,7 @@ drive keys w command; sleep 1
 
 say "Tools › Combine files, with Schedule.pdf, saved as Combined.pdf"
 tools "combine"
-drive click-text "Files"; sleep 1.5
+drive click "Files"; sleep 1.5
 drive goto "$FILES/Schedule.pdf"; sleep 1
 drive press return; sleep 1
 drive click "Combine 2 files"
@@ -132,7 +146,7 @@ drive keys q command
 for _ in $(seq 1 20); do kill -0 "$PID" 2>/dev/null || break; sleep 0.5; done
 if kill -0 "$PID" 2>/dev/null; then
   # A document asked about unsaved changes: discard them (the run's own documents only).
-  osascript "$ROOT/scripts/e2e-drive.applescript" "$PID" click "Discard Changes" >/dev/null 2>&1 || true
+  ax press "Discard Changes" >/dev/null 2>&1 || true
   for _ in $(seq 1 20); do kill -0 "$PID" 2>/dev/null || break; sleep 0.5; done
 fi
 PID_LEFT="$PID"

@@ -9,6 +9,8 @@ enum ToolsKitStrings {
     static let rangePlaceholder = "1–3, 7"
     /// The "Pages" choice under a file in a queue (ux §5.3 Combine: "Pages: all ▾").
     static let allPages = "All"
+    /// What a screen reader calls the dot grid of Watermark and Page numbers.
+    static let position = "Position"
     static func pagesOf(_ fileName: String) -> String { "Pages of \(Strings.quoted(fileName))" }
     /// A failure that isn't a `ToolError` (the code goes behind Show details).
     static let somethingWentWrong = "Something went wrong. Nothing was changed."

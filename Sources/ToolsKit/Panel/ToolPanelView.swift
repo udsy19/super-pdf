@@ -352,7 +352,7 @@ private struct ScopeRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             ControlRow(label: Strings.Panel.scopeLabel) {
-                PopupField(options: options, selected: selected, titleOverride: titleOverride) { id in
+                PopupField(options: options, selected: selected, titleOverride: titleOverride, label: Strings.Panel.scopeLabel) { id in
                     switch id {
                     case "all": session.setScope(.all)
                     case "current": session.setScope(.current)
@@ -394,25 +394,25 @@ struct ControlView: View {
     var body: some View {
         switch control {
         case .segmented(let id, let label, let options, _):
-            ControlRow(label: label) { SegmentedBar(options: options, selected: string(id)) { session.set(id, .string($0)) } }
+            ControlRow(label: label) { SegmentedBar(options: options, selected: string(id), label: label ?? "") { session.set(id, .string($0)) } }
         case .radio(let id, let options, _):
             PresetCards(options: options, selected: string(id)) { session.set(id, .string($0)) }
         case .popup(let id, let label, let options, _):
             ControlRow(label: label) {
-                PopupField(options: Array(options.prefix(SPMetrics.ToolPanel.maximumPopupItems)), selected: string(id), titleOverride: nil) {
+                PopupField(options: Array(options.prefix(SPMetrics.ToolPanel.maximumPopupItems)), selected: string(id), titleOverride: nil, label: label) {
                     session.set(id, .string($0))
                 }
                 .frame(height: 24)
             }
         case .slider(let id, let label, let range, let step, _, let format):
             ControlRow(label: label) {
-                ValueSlider(range: range, step: step, value: number(id), format: format) { session.set(id, .double($0)) }
+                ValueSlider(range: range, step: step, value: number(id), format: format, label: label) { session.set(id, .double($0)) }
             }
         case .stepper(let id, let label, let range, _):
             ControlRow(label: label) {
                 HStack(spacing: 6) {
                     Text("\(int(id))").font(.sp(SPFont.body)).frame(minWidth: 28, alignment: .trailing)
-                    Stepper("", value: Binding(get: { int(id) }, set: { session.set(id, .int($0)) }), in: range).labelsHidden()
+                    Stepper(label, value: Binding(get: { int(id) }, set: { session.set(id, .int($0)) }), in: range).labelsHidden()
                     Spacer(minLength: 0)
                 }
             }
@@ -424,7 +424,7 @@ struct ControlView: View {
             }
         case .text(let id, let label, let placeholder, _, let isSecure):
             ControlRow(label: label) {
-                PanelTextField(placeholder: placeholder, value: session.values.string(id), isSecure: isSecure, focusOnAppear: focusOnAppear) {
+                PanelTextField(placeholder: placeholder, label: label, value: session.values.string(id), isSecure: isSecure, focusOnAppear: focusOnAppear) {
                     session.set(id, .string($0))
                 }
             }
