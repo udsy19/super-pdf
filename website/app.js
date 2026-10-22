@@ -1,102 +1,106 @@
+// Super PDF website: the Combine sequence in the hero, the Tools search, and the installer's Copy button.
 (() => {
   const root = document.documentElement;
-  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  // Reveal on scroll (opacity/transform only, so nothing shifts layout).
-  const targets = document.querySelectorAll(".reveal, .mock, .group");
-  if ("IntersectionObserver" in window && !reduce) {
-    const io = new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } }), { threshold: 0.18 });
-    targets.forEach((t) => io.observe(t));
-  } else targets.forEach((t) => t.classList.add("in"));
+  // ---------- hero: four files land in a heap on the Combine canvas, then snap into order ----------
+  const ws = document.getElementById("combine");
+  if (ws && root.classList.contains("play")) {
+    const cards = [...ws.querySelectorAll(".ws-grid > .fc:not(.drop)")];
+    const drop = ws.querySelector("[data-drop]");
+    const sub = ws.querySelector("[data-sub]");
+    const status = ws.querySelector("[data-status]");
+    const finish = ws.querySelector("[data-finish]");
+    const budget = ws.querySelector('[data-k="budget"]');
+    const cap = budget.querySelector("[data-cap]");
+    const bar = budget.querySelector(".conv b i");
+    const capDone = cap.textContent;
 
-  const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
-  const fine = matchMedia("(pointer: fine)").matches;
-
-  // Hero: the app works on the document, scene by scene (rearrange, shrink, black out, sign).
-  const demo = document.querySelector(".hero-demo");
-  if (demo) {
-    const size = demo.querySelector("[data-size]"), bar = demo.querySelector("[data-bar]");
-    const SCENES = [3300, 3600, 3000, 3800]; let scene = 0, timer = 0, visible = true, raf = 0;
-    const tween = (from, to, ms, fn) => { cancelAnimationFrame(raf); const t0 = performance.now(); const step = (n) => { const k = clamp((n - t0) / ms); fn(from + (to - from) * (1 - Math.pow(1 - k, 3))); if (k < 1) raf = requestAnimationFrame(step); }; raf = requestAnimationFrame(step); };
-    const show = (i) => {
-      scene = i; demo.dataset.scene = String(i);
-      demo.dataset.shuffle = i === 0 ? "1" : "0";
-      if (i === 0) { demo.dataset.shuffle = "0"; setTimeout(() => (demo.dataset.shuffle = "1"), 700); }
-      if (i === 1) tween(6.1, 2.8, 2400, (v) => { size.textContent = v.toFixed(1); bar.style.setProperty("--w", ((v / 6.1) * 100).toFixed(0) + "%"); });
-      else if (i === 0) { size.textContent = "6.1"; bar.style.setProperty("--w", "100%"); }
+    const count = (files, pages) => {
+      if (!files) { sub.textContent = "No files yet"; status.textContent = ""; return; }
+      const f = `${files} ${files === 1 ? "file" : "files"}`, p = `${pages} ${pages === 1 ? "page" : "pages"}`;
+      sub.textContent = `${f} · ${p}`;
+      status.innerHTML = `<b>${f}</b> · ${p}`;
     };
-    const loop = () => { clearTimeout(timer); if (!visible) return; timer = setTimeout(() => { show((scene + 1) % 4); loop(); }, SCENES[scene]); };
-    if (reduce) { demo.dataset.static = ""; demo.dataset.scene = "3"; size.textContent = "2.8"; bar.style.setProperty("--w", "46%"); }
-    else { setTimeout(() => { show(0); loop(); }, 2000); new IntersectionObserver((e) => { visible = e[0].isIntersecting; if (visible) loop(); else clearTimeout(timer); }).observe(demo); }
-  }
+    const at = (ms, fn) => setTimeout(fn, ms);
 
-  // Scroll-linked: hero tilt, pinned showcase, final CTA parallax, sticky download bar.
-  const heroTilt = document.querySelector(".hero-tilt"), track = document.getElementById("sc-track");
-  const scenes = [...document.querySelectorAll(".sc")], steps = [...document.querySelectorAll(".sc-step")];
-  const finalCta = document.getElementById("get"), bar = document.getElementById("getbar"), heroCta = document.querySelector(".hero .cta");
-  const setNum = (root, t) => root.querySelectorAll("[data-from]").forEach((n) => { const f = +n.dataset.from, e = +n.dataset.to; n.textContent = (f + (e - f) * t).toFixed(+n.dataset.dec); });
-  let ticking = false;
-  function frame() {
-    ticking = false; const vh = innerHeight;
-    if (heroTilt && !reduce) heroTilt.style.setProperty("--hp", clamp(scrollY / (vh * 0.9)).toFixed(3));
-    if (track && !reduce && innerWidth > 0) {
-      const r = track.getBoundingClientRect(); const p = clamp(-r.top / (r.height - vh * 0.9));
-      const n = scenes.length, cur = Math.min(n - 1, Math.floor(p * n));
-      scenes.forEach((s, i) => { const t = clamp((p * n - i) / 0.8); s.style.setProperty("--t", t.toFixed(3)); s.classList.toggle("on", i === cur); setNum(s, t); });
-      steps.forEach((s, i) => { s.classList.toggle("on", i === cur); s.style.setProperty("--t", clamp((p * n - i) / 0.8).toFixed(3)); });
-    }
-    if (finalCta && !reduce) { const r = finalCta.getBoundingClientRect(); finalCta.style.setProperty("--fp", clamp(1 - r.bottom / (vh + r.height)).toFixed(3)); }
-    if (bar) { const hc = heroCta.getBoundingClientRect(), fc = finalCta.getBoundingClientRect(); bar.classList.toggle("on", hc.bottom < 0 && fc.top > vh * 0.7); }
-  }
-  const tick = () => { if (!ticking) { ticking = true; requestAnimationFrame(frame); } };
-  addEventListener("scroll", tick, { passive: true }); addEventListener("resize", tick); frame();
-  if (reduce) { scenes.forEach((s) => setNum(s, 1)); }
+    // The files land in a heap in the middle of the canvas.
+    const target = ws.querySelector(".ws-grid").getBoundingClientRect();
+    const hx = target.left + target.width / 2, hy = target.top + target.height / 2;
+    const tilt = [-8, 6, -3, 9], nudge = [[-22, -8], [18, -14], [-8, 10], [14, 6]];
+    const STEP = 150, LAND = 420, REST = 480, SNAP = 760, SNAP_STEP = 70;
+    const HEAP = (cards.length - 1) * STEP + LAND + REST; // the last card has landed and settled
 
-  // Magnetic download buttons.
-  if (fine && !reduce) document.querySelectorAll("[data-magnet]").forEach((b) => {
-    let r = 0; b.addEventListener("pointermove", (e) => { const q = b.getBoundingClientRect(); const x = (e.clientX - q.left - q.width / 2) * 0.22, y = (e.clientY - q.top - q.height / 2) * 0.3; cancelAnimationFrame(r); r = requestAnimationFrame(() => (b.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`)); });
-    b.addEventListener("pointerleave", () => { cancelAnimationFrame(r); b.style.transition = "transform .45s cubic-bezier(.2,.8,.2,1)"; b.style.transform = ""; setTimeout(() => (b.style.transition = ""), 460); });
-  });
+    ws.classList.add("pre");
+    finish.classList.add("idle");
+    budget.classList.add("converting");
+    cap.textContent = "Converting to PDF…";
+    count(0, 0);
 
-  // Tile spotlight follows the pointer.
-  const gridEl = document.getElementById("tool-grid");
-  if (gridEl && fine) gridEl.addEventListener("pointermove", (e) => { const t = e.target.closest(".tile"); if (!t) return; const q = t.getBoundingClientRect(); t.style.setProperty("--mx", e.clientX - q.left + "px"); t.style.setProperty("--my", e.clientY - q.top + "px"); });
-
-  // Copy the installer line.
-  document.querySelectorAll("[data-copy]").forEach((b) => b.addEventListener("click", async () => {
-    try { await navigator.clipboard.writeText(b.dataset.copy); b.textContent = "Copied"; setTimeout(() => (b.textContent = "Copy"), 1600); } catch { b.textContent = "Select and copy"; }
-  }));
-
-  // Make smaller: the three presets are a radio group.
-  document.querySelectorAll(".m-opts").forEach((g) => g.addEventListener("click", (e) => {
-    const o = e.target.closest("[role=radio]"); if (!o) return;
-    g.querySelectorAll("[role=radio]").forEach((x) => x.setAttribute("aria-checked", String(x === o)));
-  }));
-
-  // Tools grid: search name, hint and synonyms; filter by section.
-  const input = document.getElementById("tool-search"); if (!input) return;
-  const tiles = [...document.querySelectorAll(".tile")];
-  const groups = [...document.querySelectorAll(".group")];
-  const chips = [...document.querySelectorAll(".chip")];
-  const count = document.getElementById("tool-count"); const empty = document.getElementById("tool-empty");
-  const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  let section = "all";
-  tiles.forEach((t) => { t._n = t.querySelector("b"); t._h = t.querySelector("span"); t._nt = t._n.textContent; t._ht = t._h.textContent; });
-  function mark(el, text, re) { el.replaceChildren(); if (!re) { el.textContent = text; return; } let last = 0; for (const m of text.matchAll(re)) { el.append(text.slice(last, m.index)); const k = document.createElement("mark"); k.textContent = m[0]; el.append(k); last = m.index + m[0].length; } el.append(text.slice(last)); }
-  function apply() {
-    const q = input.value.trim().toLowerCase(); const terms = q.split(/\s+/).filter(Boolean);
-    const re = terms.length ? new RegExp(terms.map(esc).join("|"), "gi") : null; let n = 0;
-    tiles.forEach((t) => {
-      const hay = (t._nt + " " + t._ht + " " + t.dataset.syn).toLowerCase();
-      const ok = (section === "all" || t.dataset.section === section) && terms.every((w) => hay.includes(w));
-      t.hidden = !ok; if (ok) { n++; mark(t._n, t._nt, re); mark(t._h, t._ht, re); }
+    cards.forEach((c, i) => {
+      const r = c.getBoundingClientRect(), rest = getComputedStyle(c).boxShadow;
+      const heap = `translate(${hx - (r.left + r.width / 2) + nudge[i][0]}px, ${hy - (r.top + r.height / 2) + nudge[i][1]}px) rotate(${tilt[i]}deg)`;
+      const lifted = "0 14px 28px -8px rgba(22,26,51,.3)";
+      const total = HEAP + i * SNAP_STEP + SNAP - i * STEP; // land STEP apart, leave the heap in order SNAP_STEP apart
+      c.animate([
+        { transform: `${heap} translateY(-48px) scale(1.14)`, opacity: 0, boxShadow: "0 34px 50px -12px rgba(22,26,51,.4)", easing: "cubic-bezier(.2,.7,.3,1)" },
+        { transform: `${heap} scale(1)`, opacity: 1, boxShadow: lifted, offset: LAND / total },
+        { transform: `${heap} scale(1)`, opacity: 1, boxShadow: lifted, offset: 1 - SNAP / total, easing: "cubic-bezier(.3,1.25,.5,1)" },
+        { transform: "none", opacity: 1, boxShadow: rest },
+      ], { duration: total, delay: i * STEP, fill: "backwards" });
     });
-    groups.forEach((g) => (g.hidden = !g.querySelector(".tile:not([hidden])")));
-    count.textContent = n === tiles.length ? `All ${n} tools` : `${n} of ${tiles.length} tools`;
-    empty.hidden = n !== 0;
+    root.classList.remove("play");
+
+    // What the window says while it happens.
+    drop.classList.add("hot");
+    const pages = [12, 1, 0, 3];
+    let files = 0, sum = 0;
+    cards.forEach((c, i) => at(i * STEP + LAND, () => { files += 1; sum += pages[i]; count(files, sum); }));
+    const landed = (cards.length - 1) * STEP + LAND;
+    at(landed + 120, () => drop.classList.remove("hot"));
+    const convStart = 2 * STEP + LAND, convLen = 1500;
+    if (bar) bar.animate([{ width: "0%" }, { width: "100%" }], { duration: convLen, delay: convStart, easing: "cubic-bezier(.4,0,.2,1)", fill: "both" });
+    at(convStart + convLen, () => { budget.classList.remove("converting"); cap.textContent = capDone; sum += 1; count(files, sum); });
+    const settled = HEAP + (cards.length - 1) * SNAP_STEP + SNAP;
+    at(Math.max(settled, convStart + convLen) + 80, () => { ws.classList.remove("pre"); finish.classList.remove("idle"); });
   }
-  input.addEventListener("input", apply);
-  chips.forEach((c) => c.addEventListener("click", () => { section = c.dataset.section; chips.forEach((x) => x.setAttribute("aria-pressed", String(x === c))); apply(); }));
-  addEventListener("keydown", (e) => { if (e.key === "/" && !/INPUT|TEXTAREA/.test(document.activeElement.tagName)) { e.preventDefault(); input.focus({ preventScroll: false }); } if (e.key === "Escape" && document.activeElement === input) { input.value = ""; apply(); } });
-  apply();
+
+  // ---------- Tools search: names, hints and the catalog's synonyms ----------
+  const q = document.getElementById("q");
+  if (q) {
+    const items = [...document.querySelectorAll(".cat li")];
+    const cats = [...document.querySelectorAll(".cat")];
+    const box = document.getElementById("cats"), countEl = document.getElementById("count"), empty = document.getElementById("empty");
+    const tries = [...document.querySelectorAll("[data-try]")];
+    const total = items.length;
+    const filter = () => {
+      const raw = q.value.trim(), words = raw.toLowerCase().split(/\s+/).filter(Boolean);
+      let n = 0;
+      for (const li of items) { const ok = words.every((w) => li.dataset.q.includes(w)); li.hidden = !ok; if (ok) n += 1; }
+      for (const c of cats) c.hidden = !c.querySelector("li:not([hidden])");
+      countEl.textContent = !words.length ? `All ${total} tools` : n ? `${n} ${n === 1 ? "tool matches" : "tools match"} “${raw}”` : "";
+      empty.hidden = n > 0;
+      box.classList.toggle("q", words.length > 0);
+      for (const b of tries) b.setAttribute("aria-pressed", String(b.dataset.try.toLowerCase() === raw.toLowerCase()));
+    };
+    q.addEventListener("input", filter);
+    for (const b of tries) {
+      b.setAttribute("aria-pressed", "false");
+      b.addEventListener("click", () => { q.value = b.getAttribute("aria-pressed") === "true" ? "" : b.dataset.try; filter(); });
+    }
+    if (q.value) filter();
+  }
+
+  // ---------- Copy the installer ----------
+  for (const b of document.querySelectorAll("[data-copy]")) {
+    b.addEventListener("click", async () => {
+      try { await navigator.clipboard.writeText(b.dataset.copy); }
+      catch {
+        const r = document.createRange(); r.selectNodeContents(b.previousElementSibling);
+        const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+        return;
+      }
+      b.textContent = "Copied";
+      setTimeout(() => { b.textContent = "Copy"; }, 1600);
+    });
+  }
 })();

@@ -1,9 +1,11 @@
 // Reads the 52 Tools-sheet tiles straight from the app's catalog so the website never drifts from it.
 import { readFileSync } from "node:fs";
 const SRC = new URL("../../Sources/SuperPDFCore/Catalogs/ToolCatalog.swift", import.meta.url);
+// [key, title, pill] in the sheet's order. The pill is the section's pastel pair in the app's brand palette
+// (SPColor.pills / docs/mockups/src/shared.css); style.css defines --s-<pill>, --f-<pill> and --i-<pill>.
 export const SECTIONS = [
-  ["pages", "Pages", "#007AFF"], ["convert", "Convert", "#34C759"], ["edit", "Edit", "#FF9500"], ["markUp", "Mark up", "#FFCC00"],
-  ["signAndFill", "Sign & fill", "#AF52DE"], ["protect", "Protect", "#FF3B30"], ["fixAndCheck", "Fix & check", "#30B0C7"], ["scan", "Scan", "#A2845E"],
+  ["pages", "Pages", "sky"], ["convert", "Convert", "mint"], ["edit", "Edit", "peach"], ["markUp", "Mark up", "lemon"],
+  ["signAndFill", "Sign & fill", "lavender"], ["protect", "Protect", "coral"], ["fixAndCheck", "Fix & check", "aqua"], ["scan", "Scan", "pink"],
 ];
 export function readTools() {
   const re = /ToolTile\(\.(\w+),\s*\.(\w+),\s*"([^"]*)",\s*"([^"]*)",\s*synonyms:\s*\[([^\]]*)\]/g;
