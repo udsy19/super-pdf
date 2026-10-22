@@ -68,7 +68,7 @@ public final class DocumentWindowController: NSWindowController, NSWindowDelegat
 
     private func configureWindow(_ window: NSWindow, adopted: Bool) {
         window.delegate = self
-        window.titleVisibility = .hidden
+        window.titleVisibility = .visible
         window.toolbarStyle = .unified
         window.title = handle.displayName
         window.representedURL = handle.url
@@ -194,11 +194,11 @@ public final class DocumentWindowController: NSWindowController, NSWindowDelegat
 
     // MARK: Title
 
+    /// The title bar's own title and subtitle with the proxy icon (representedURL), as Preview shows them.
     func updateTitle() {
-        window?.title = handle.displayName
+        window?.title = handle.url?.lastPathComponent ?? handle.displayName
+        window?.subtitle = ViewerStrings.pages(handle.pageCount) + (handle.state.isEdited ? " " + ViewerStrings.Toolbar.edited : "")
         window?.representedURL = handle.url
-        toolbarController.titleView.update(name: handle.url?.lastPathComponent ?? handle.displayName, edited: handle.state.isEdited,
-                                           url: handle.url)
     }
 
     override public func synchronizeWindowTitleWithDocumentName() {

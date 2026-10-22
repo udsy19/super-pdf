@@ -16,8 +16,6 @@ public enum SPMetrics {
     public enum Toolbar {
         /// The Tools button: bordered-prominent capsule, `square.grid.2x2` at 13 pt on the left.
         public static let toolsButtonHeight: CGFloat = 28
-        public static let toolsButtonPadding: CGFloat = 16
-        public static let toolsSymbolSize: CGFloat = 13
         public static let toolsSymbol = "square.grid.2x2"
         public static let searchFieldWidth: CGFloat = 180
     }

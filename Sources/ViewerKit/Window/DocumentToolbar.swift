@@ -5,7 +5,6 @@ import SuperPDFCore
 extension NSToolbarItem.Identifier {
     static let viewMenu = Self("viewer.view")
     static let zoom = Self("viewer.zoom")
-    static let documentTitle = Self("viewer.title")
     static let markup = Self("viewer.markup")
     static let rotate = Self("viewer.rotate")
     static let formFilling = Self("viewer.formFilling")
@@ -27,7 +26,6 @@ extension NSToolbarItem.Identifier {
 @MainActor
 final class DocumentToolbar: NSObject, NSToolbarDelegate, NSSearchFieldDelegate, NSSharingServicePickerToolbarItemDelegate {
     weak var owner: DocumentWindowController!
-    let titleView = TitleView()
     let organiserTitleView = TitleView()
     private(set) weak var searchField: NSSearchField?
     private var searchDebounce: Timer?
@@ -44,7 +42,6 @@ final class DocumentToolbar: NSObject, NSToolbarDelegate, NSSearchFieldDelegate,
         toolbar.displayMode = .iconOnly
         toolbar.allowsUserCustomization = true
         toolbar.autosavesConfiguration = persists
-        toolbar.centeredItemIdentifiers = [.documentTitle]
         return toolbar
     }
 
@@ -66,14 +63,16 @@ final class DocumentToolbar: NSObject, NSToolbarDelegate, NSSearchFieldDelegate,
                     .organiserSize, .organiserDone]
         }
         let forms: [NSToolbarItem.Identifier] = owner.handle.state.hasFormFields ? [.formFilling] : []
-        return [.viewMenu, .sidebarTrackingSeparator, .zoom, .flexibleSpace, .documentTitle, .flexibleSpace, .markup, .rotate] + forms
-            + Defaults[.toolbarTools].map(\.toolbarItemIdentifier) + [.tools, .share, .search]
+        // The title and subtitle are the window's own (leading, after the zoom group); `.space` keeps macOS 26 from merging
+        // neighbouring bordered items into one glass capsule.
+        return [.viewMenu, .sidebarTrackingSeparator, .zoom, .flexibleSpace, .markup, .rotate] + forms
+            + Defaults[.toolbarTools].map(\.toolbarItemIdentifier) + [.space, .tools, .space, .share, .space, .search]
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         if toolbar.identifier == Self.organiserToolbarID { return toolbarDefaultItemIdentifiers(toolbar) }
-        return [.viewMenu, .sidebarTrackingSeparator, .zoom, .documentTitle, .markup, .rotate, .formFilling, .tools, .share, .search,
-                .flexibleSpace] + ToolCatalog.tiles.map(\.id.toolbarItemIdentifier)
+        return [.viewMenu, .sidebarTrackingSeparator, .zoom, .markup, .rotate, .formFilling, .tools, .share, .search,
+                .flexibleSpace, .space] + ToolCatalog.tiles.map(\.id.toolbarItemIdentifier)
     }
 
     func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier identifier: NSToolbarItem.Identifier,
@@ -98,12 +97,6 @@ final class DocumentToolbar: NSObject, NSToolbarDelegate, NSSearchFieldDelegate,
             group.label = ViewerStrings.Toolbar.zoom
             group.controlRepresentation = .expanded
             return group
-        case .documentTitle:
-            let item = NSToolbarItem(itemIdentifier: identifier)
-            item.view = titleView
-            item.label = ""
-            item.visibilityPriority = .high
-            return item
         case .organiserTitle:
             let item = NSToolbarItem(itemIdentifier: identifier)
             item.view = organiserTitleView
@@ -117,19 +110,23 @@ final class DocumentToolbar: NSObject, NSToolbarDelegate, NSSearchFieldDelegate,
             return button(identifier, symbol: "rectangle.and.pencil.and.ellipsis", label: ViewerStrings.Toolbar.formFilling,
                           action: #selector(fillForm(_:)))
         case .tools:
+            // A native bordered item; on macOS 26 the prominent style draws the accent-tinted glass capsule.
             let item = NSToolbarItem(itemIdentifier: identifier)
-            let button = ProminentButton(title: ViewerStrings.Toolbar.tools, symbol: SPMetrics.Toolbar.toolsSymbol, target: self,
-                                         action: #selector(showTools(_:)))
-            button.toolTip = "\(ViewerStrings.Toolbar.tools) (⌘T)"
-            item.view = button
+            item.image = NSImage(systemSymbolName: SPMetrics.Toolbar.toolsSymbol, accessibilityDescription: ViewerStrings.Toolbar.tools)
+            item.title = ViewerStrings.Toolbar.tools
             item.label = ViewerStrings.Toolbar.tools
-            item.isBordered = false
-            item.visibilityPriority = .user
+            item.toolTip = "\(ViewerStrings.Toolbar.tools) (⌘T)"
+            item.isBordered = true
+            if #available(macOS 26.0, *) { item.style = .prominent }
+            item.target = self
+            item.action = #selector(showTools(_:))
+            item.visibilityPriority = .high
             return item
         case .share:
             let item = NSSharingServicePickerToolbarItem(itemIdentifier: identifier)
             item.delegate = self
             item.label = ViewerStrings.Toolbar.share
+            item.toolTip = ViewerStrings.Toolbar.share
             return item
         case .search:
             let item = NSSearchToolbarItem(itemIdentifier: identifier)
@@ -140,6 +137,7 @@ final class DocumentToolbar: NSObject, NSToolbarDelegate, NSSearchFieldDelegate,
             item.searchField.target = self
             item.searchField.action = #selector(searchReturn(_:))
             item.label = ViewerStrings.Toolbar.search
+            item.visibilityPriority = .low
             searchField = item.searchField
             return item
         case .organiserRotateLeft:
@@ -159,9 +157,12 @@ final class DocumentToolbar: NSObject, NSToolbarDelegate, NSSearchFieldDelegate,
             return item
         case .organiserDone:
             let item = NSToolbarItem(itemIdentifier: identifier)
-            item.view = ProminentButton(title: ViewerStrings.Organiser.done, symbol: nil, target: self, action: #selector(organiserDone(_:)))
+            item.title = ViewerStrings.Organiser.done
             item.label = ViewerStrings.Organiser.done
-            item.isBordered = false
+            item.isBordered = true
+            if #available(macOS 26.0, *) { item.style = .prominent }
+            item.target = self
+            item.action = #selector(organiserDone(_:))
             return item
         default:
             return nil
@@ -353,59 +354,4 @@ final class TitleView: NSView, NSDraggingSource {
     }
 
     override var mouseDownCanMoveWindow: Bool { false }
-}
-
-/// The one coloured control in the window (ux §2.1): accent fill, 28 pt tall, white 13 pt semibold label with its symbol
-/// on the left; also the organiser's Done.
-final class ProminentButton: NSButton {
-    private let symbolName: String?
-
-    init(title: String, symbol: String?, target: AnyObject?, action: Selector) {
-        symbolName = symbol
-        super.init(frame: .zero)
-        self.title = title
-        self.target = target
-        self.action = action
-        isBordered = false
-        setButtonType(.momentaryPushIn)
-        setAccessibilityLabel(title)
-    }
-
-    required init?(coder: NSCoder) { fatalError("not used") }
-
-    private var label: NSAttributedString {
-        NSAttributedString(string: title, attributes: [.font: SPFont.primaryButton.font(), .foregroundColor: NSColor.white])
-    }
-
-    private var symbol: NSImage? {
-        symbolName.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: nil) }?
-            .withSymbolConfiguration(.init(pointSize: SPMetrics.Toolbar.toolsSymbolSize, weight: .semibold).applying(.init(paletteColors: [.white])))
-    }
-
-    override var intrinsicContentSize: NSSize {
-        let symbolWidth = symbol.map { $0.size.width + 6 } ?? 0
-        return NSSize(width: ceil(label.size().width + symbolWidth) + 2 * SPMetrics.Toolbar.toolsButtonPadding,
-                      height: SPMetrics.Toolbar.toolsButtonHeight)
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        let rect = bounds.insetBy(dx: 0, dy: max(0, (bounds.height - SPMetrics.Toolbar.toolsButtonHeight) / 2))
-        let path = NSBezierPath(roundedRect: rect, xRadius: 8, yRadius: 8)
-        var fill = SPColor.accent.color
-        if isHighlighted { fill = fill.shadow(withLevel: 0.15) ?? fill }
-        if !isEnabled { fill = fill.withAlphaComponent(SPMetrics.PrimaryButton.disabledOpacity) }
-        fill.setFill()
-        path.fill()
-        let text = label
-        let textSize = text.size()
-        let symbol = symbol
-        let symbolSize = symbol?.size ?? .zero
-        let total = textSize.width + (symbol == nil ? 0 : symbolSize.width + 6)
-        var x = rect.midX - total / 2
-        if let symbol {
-            symbol.draw(in: NSRect(x: x, y: rect.midY - symbolSize.height / 2, width: symbolSize.width, height: symbolSize.height))
-            x += symbolSize.width + 6
-        }
-        text.draw(at: NSPoint(x: x, y: rect.midY - textSize.height / 2))
-    }
 }

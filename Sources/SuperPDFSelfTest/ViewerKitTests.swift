@@ -270,15 +270,15 @@ private func viewerKitWindow() {
     check(Services.viewer === Viewer.shared && Services.toolProviders.contains { $0 is ViewerTools }, "installs the viewer and its tiles")
     check(window.frame.size == SPMetrics.Window.defaultSize && window.minSize == SPMetrics.Window.minimumSize,
           "1100 × 760, at least 640 × 440 (\(window.frame.size), \(window.minSize))")
-    check(window.toolbarStyle == .unified && window.titleVisibility == .hidden, "unified toolbar, title in the middle")
+    check(window.toolbarStyle == .unified && window.titleVisibility == .visible, "unified toolbar, native title")
+    check(window.title == "Lease agreement.pdf" && window.subtitle.contains("page") && window.representedURL == url, "native title, page-count subtitle and proxy icon (\(window.subtitle))")
     check(window.frame.height - window.contentLayoutRect.height == SPMetrics.Window.toolbarHeight,
           "52 pt title and toolbar (\(window.frame.height - window.contentLayoutRect.height))")
     let identifiers = window.toolbar?.items.map(\.itemIdentifier) ?? []
-    check(identifiers == [.viewMenu, .sidebarTrackingSeparator, .zoom, .flexibleSpace, .documentTitle, .flexibleSpace, .markup, .rotate,
-                          .tools, .share, .search], "Preview's toolbar plus Tools (\(identifiers.map(\.rawValue)))")
-    check(window.toolbar?.centeredItemIdentifiers == [.documentTitle], "the title is centred")
-    let tools = window.toolbar?.items.first { $0.itemIdentifier == .tools }?.view
-    check(tools?.intrinsicContentSize.height == SPMetrics.Toolbar.toolsButtonHeight, "Tools is 28 pt tall")
+    check(identifiers == [.viewMenu, .sidebarTrackingSeparator, .zoom, .flexibleSpace, .markup, .rotate,
+                          .space, .tools, .space, .share, .space, .search], "Preview's toolbar plus Tools (\(identifiers.map(\.rawValue)))")
+    let tools = window.toolbar?.items.first { $0.itemIdentifier == .tools }
+    check(tools?.isBordered == true && tools?.title == "Tools" && tools?.image != nil && tools?.visibilityPriority == .high, "Tools is a native bordered titled item")
     let search = window.toolbar?.items.first { $0.itemIdentifier == .search } as? NSSearchToolbarItem
     check(search?.preferredWidthForSearchField == 180 && search?.searchField.placeholderString == "Search", "180 pt Search")
     check(controller.sidebar.view.frame.width == SPMetrics.Sidebar.defaultWidth, "197 pt sidebar (\(controller.sidebar.view.frame.width))")
@@ -518,6 +518,17 @@ private func drawTitlebar(of window: NSWindow, in frameView: NSView) {
         SPColor.separator.color.setFill()
         NSRect(x: 0, y: bar.minY, width: bar.width, height: 1).fill()
     }
+    if window.titleVisibility == .visible, window.toolbar?.identifier == DocumentToolbar.documentToolbarID {
+        // The window server places the title; stand in for it just after the zoom group.
+        let zoom = allViews(frameView).first { String(describing: type(of: $0)).contains("ToolbarItemViewer") && ($0.value(forKey: "item") as? NSToolbarItem)?.itemIdentifier == .zoom }
+        let x = (zoom.map { $0.convert($0.bounds, to: frameView).maxX } ?? 200) + 16
+        let midY = bar.midY
+        NSWorkspace.shared.icon(for: .pdf).draw(in: NSRect(x: x, y: midY - 8, width: 16, height: 16))
+        NSAttributedString(string: window.title, attributes: [.font: NSFont.systemFont(ofSize: 13, weight: .semibold), .foregroundColor: SPColor.label.color])
+            .draw(at: NSPoint(x: x + 22, y: midY - 1))
+        NSAttributedString(string: window.subtitle, attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: SPColor.secondaryLabel.color])
+            .draw(at: NSPoint(x: x + 22, y: midY - 15))
+    }
     for (index, hex) in ["#FF5F57", "#FEBC2E", "#28C840"].enumerated() {
         NSColor(hex: hex).setFill()
         let center = NSPoint(x: SPMetrics.Window.trafficLights.x + CGFloat(index) * 20, y: frameView.bounds.height - (window.toolbar == nil ? 18 : 26))
@@ -541,7 +552,7 @@ private func drawToolbar(of window: NSWindow, in frameView: NSView) {
         guard let item = viewer.value(forKey: "item") as? NSToolbarItem else { continue }
         let rect = viewer.convert(viewer.bounds, to: frameView)
         let kind = viewer.subviews.first.map { String(describing: type(of: $0)) } ?? ""
-        if let view = item.view, view is TitleView || view is ProminentButton || view is NSSlider {
+        if let view = item.view, view is TitleView || view is NSSlider {
             let frame = view.convert(view.bounds, to: frameView)
             context.saveGState()
             context.translateBy(x: frame.minX, y: view.isFlipped ? frame.maxY : frame.minY)
@@ -551,6 +562,18 @@ private func drawToolbar(of window: NSWindow, in frameView: NSView) {
             view.draw(view.bounds)
             NSGraphicsContext.current = previous
             context.restoreGState()
+            continue
+        }
+        if item.itemIdentifier == .tools || item.itemIdentifier == .organiserDone {
+            let capsule = NSRect(x: rect.minX + 2, y: rect.midY - 14, width: rect.width - 4, height: 28)
+            SPColor.accent.color.setFill()
+            NSBezierPath(roundedRect: capsule, xRadius: 14, yRadius: 14).fill()
+            let text = NSAttributedString(string: item.title, attributes: [.font: SPFont.primaryButton.font(), .foregroundColor: NSColor.white])
+            let icon = item.image?.withSymbolConfiguration(.init(pointSize: 13, weight: .semibold).applying(.init(paletteColors: [.white])))
+            let total = text.size().width + (icon.map { $0.size.width + 6 } ?? 0)
+            var x = capsule.midX - total / 2
+            if let icon { icon.draw(in: NSRect(x: x, y: capsule.midY - icon.size.height / 2, width: icon.size.width, height: icon.size.height)); x += icon.size.width + 6 }
+            text.draw(at: NSPoint(x: x, y: capsule.midY - text.size().height / 2))
             continue
         }
         switch kind {
@@ -646,10 +669,11 @@ private func viewerKitRenders() {
 
     // main-window.png: the window with the thumbnail sidebar, page 1 selected.
     if let rep = render(window, "main-window", sidebar: controller.sidebar.view) {
-        let toolbarItem = window.toolbar?.items.first { $0.itemIdentifier == .tools }?.view
-        if let tools = toolbarItem, let frameView = window.contentView?.superview {
-            let frame = tools.convert(tools.bounds, to: frameView)
-            check(isAccent(pixel(rep, frame.minX + 4, frameView.bounds.height - frame.midY)), "the Tools button is the accent colour")
+        if let viewer = allViews(window.contentView!.superview!).first(where: {
+            String(describing: type(of: $0)).contains("ToolbarItemViewer") && ($0.value(forKey: "item") as? NSToolbarItem)?.itemIdentifier == .tools
+        }), let frameView = window.contentView?.superview {
+            let frame = viewer.convert(viewer.bounds, to: frameView)
+            check(isAccent(pixel(rep, frame.minX + 8, frameView.bounds.height - frame.midY)), "the Tools stand-in is the accent colour")
         }
         if let first = controller.sidebar.thumbnails.collectionView.item(at: IndexPath(item: 0, section: 0)) as? PageItem,
            let frameView = window.contentView?.superview {
@@ -658,6 +682,13 @@ private func viewerKitRenders() {
         }
     }
     render(window, "main-window-dark", dark: true, sidebar: controller.sidebar.view)
+    let originalFrame = window.frame
+    for width in [900, 1200, 1600] {
+        window.setFrame(NSRect(origin: originalFrame.origin, size: NSSize(width: CGFloat(width), height: originalFrame.height)), display: false)
+        render(window, "toolbar-\(width)", sidebar: controller.sidebar.view)
+        render(window, "toolbar-\(width)-dark", dark: true, sidebar: controller.sidebar.view)
+    }
+    window.setFrame(originalFrame, display: false)
 
     // main-window-result.png: ToolsKit's banner in the 44 pt slot under the toolbar.
     ToolsKitModule.install()
