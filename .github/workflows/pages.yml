@@ -1,11 +1,11 @@
 name: Website
 
-# Publishes the one-line installer: curl -fsSL https://udsy19.github.io/super-pdf/install.sh | bash
+# Publishes the website and the one-line installer: curl -fsSL https://udsy19.github.io/super-pdf/install.sh | bash
 # Needs GitHub Pages turned on for this repository with "GitHub Actions" as the source.
 on:
   push:
     branches: [main]
-    paths: [scripts/install.sh, README.md, .github/workflows/pages.yml]
+    paths: [website/**, scripts/install.sh, .github/workflows/pages.yml]
   workflow_dispatch:
 
 permissions:
@@ -26,17 +26,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Assemble site
-        # install.sh at the site root; the index sends visitors to the repository's README.
+        # The site from website/, with install.sh at its root.
         run: |
           mkdir -p _site
+          cp -R website/. _site/
+          rm -rf _site/src
           cp scripts/install.sh _site/install.sh
-          cat > _site/index.html <<'HTML'
-          <!doctype html>
-          <meta charset="utf-8">
-          <title>Super PDF</title>
-          <meta http-equiv="refresh" content="0; url=https://github.com/udsy19/super-pdf#readme">
-          <p><a href="https://github.com/udsy19/super-pdf#readme">Super PDF on GitHub</a></p>
-          HTML
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
