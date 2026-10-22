@@ -88,15 +88,35 @@ public enum SPMetrics {
         public static let autoHideDelay: TimeInterval = 8
     }
 
-    /// The page organiser (ux §2.1, §6.2).
-    public enum Organiser {
-        public static let defaultThumbnailWidth: CGFloat = 160
-        public static let thumbnailWidthRange: ClosedRange<CGFloat> = 80...320
-        public static let gap: CGFloat = 24
-        public static let radius: CGFloat = 12
-        public static let insertionLine: CGFloat = 3
-        /// Pages from another file keep a bar in that file's colour until saved.
-        public static let fileColorBar: CGFloat = 3
+    /// The workspace (ux §6.2): Combine and Rearrange as cards on a soft canvas, files or pages, grid or list.
+    public enum Workspace {
+        /// A file card: its page stack, checkbox, coloured pill and "12 pages".
+        public static let fileCard = NSSize(width: 184, height: 242)
+        /// A page card: the page, checkbox, its file's pill and "Page 3".
+        public static let pageCard = NSSize(width: 148, height: 214)
+        public static let fileCardRadius: CGFloat = 16
+        public static let pageCardRadius: CGFloat = 14
+        /// Inside a card: the page area starts this far in from the top and the sides.
+        public static let fileCardInset: CGFloat = 12
+        public static let pageCardInset: CGFloat = 10
+        /// Gaps wide enough for the round "+" between two cards.
+        public static let fileGap = NSSize(width: 36, height: 28)
+        public static let pageGap = NSSize(width: 32, height: 24)
+        /// The space above the first row (and the least at the sides).
+        public static let margin: CGFloat = 28
+        public static let pillHeight: CGFloat = 22
+        public static let pagePillHeight: CGFloat = 20
+        public static let checkbox: CGFloat = 20
+        /// The round "+" that adds files between two cards.
+        public static let inserter: CGFloat = 24
+        /// The hover toolbar's buttons (Preview, Rotate, Duplicate, Delete).
+        public static let hoverButton: CGFloat = 26
+        /// List view rows.
+        public static let listRowHeight: CGFloat = 64
+        public static let listMaxWidth: CGFloat = 820
+        /// Pinch and ⌘+ / ⌘− scale the cards.
+        public static let scaleRange: ClosedRange<CGFloat> = 0.7...1.6
+        public static let statusBarHeight: CGFloat = 36
     }
 
     /// The Tools sheet (ux §2.1, §4).
@@ -120,12 +140,14 @@ public enum SPMetrics {
         public static let size = NSSize(width: 150, height: 116)
         public static let radius: CGFloat = 12
         public static let border: CGFloat = 1
-        /// The icon circle in the category colour at 15 % with the symbol in the category colour.
-        public static let iconCircle: CGFloat = 36
-        public static let iconCircleOpacity: CGFloat = 0.15
+        /// The icon: a rounded square filled with the section's colour, a white symbol on it.
+        public static let icon: CGFloat = 36
+        public static let iconRadius: CGFloat = 10
         public static let symbolSize: CGFloat = 18
         public static let hintLines = 2
-        public static let hoverLift: CGFloat = 1
+        /// Hover lifts the tile and grows it a little, on a spring.
+        public static let hoverLift: CGFloat = 2
+        public static let hoverScale: CGFloat = 1.03
     }
 
     /// The welcome window (ux §2.1, §6.1).
@@ -133,15 +155,17 @@ public enum SPMetrics {
         public static let size = NSSize(width: 760, height: 520)
         public static let targetSize = NSSize(width: 160, height: 140)
         public static let targetRadius: CGFloat = 14
-        public static let targetIcon: CGFloat = 36
+        public static let targetIcon: CGFloat = 40
+        public static let targetIconRadius: CGFloat = 11
         public static let recentRowHeight: CGFloat = 36
         public static let recentThumbnail: CGFloat = 24
     }
 
-    /// Drop targets (ux §2.5, §3): a 2 pt accent ring and an 8 % accent tint.
+    /// Drop targets (ux §2.5, §3): a 2 pt accent ring and an 8 % accent tint; between thumbnails, a 3 pt accent line.
     public enum DropTarget {
         public static let ring: CGFloat = 2
         public static let tintOpacity: CGFloat = 0.08
+        public static let insertionLine: CGFloat = 3
     }
 
     /// Redaction marks before applying (ux §2.3).

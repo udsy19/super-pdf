@@ -50,8 +50,11 @@ public protocol ViewerPresenting: AnyObject {
     /// The result banner under the toolbar (ux §7.3).
     func showBanner(_ banner: ResultBanner, in document: DocumentHandle)
     func showSidebar(_ mode: SidebarMode, in document: DocumentHandle)
-    /// The full-window page organiser (ux §6.2), optionally with files to mix in.
+    /// The full-window workspace (ux §6.2) on a document's pages, optionally with files to mix in.
     func showOrganiser(for document: DocumentHandle, adding files: [URL])
+    /// Combines several files in the workspace (ux §6.2): a new document with a card per file, the ones that aren't PDFs
+    /// converting on their cards. Dropping several files on the app or the welcome window comes here.
+    func combine(_ files: [URL])
     /// Shown when the app opens with no document, and from Window › Welcome (ux §6.1).
     func showWelcome()
     /// Crop's handles on the pages (ux §5.2 C: "drag handles on the page where position matters"; §5.3 Crop), or none.

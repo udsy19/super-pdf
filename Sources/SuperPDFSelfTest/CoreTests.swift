@@ -97,33 +97,53 @@ private func coreTokenValues() {
     pair(SPColor.tertiaryLabel, "#00000040", "#FFFFFF40")
     pair(SPColor.accent, "#007AFF", "#0A84FF")
     pair(SPColor.destructive, "#FF3B30", "#FF453A")
-    pair(SPColor.categoryBlue, "#007AFF", "#0A84FF")
-    pair(SPColor.categoryGreen, "#34C759", "#30D158")
-    pair(SPColor.categoryOrange, "#FF9500", "#FF9F0A")
-    pair(SPColor.categoryYellow, "#FFCC00", "#FFD60A")
-    pair(SPColor.categoryPurple, "#AF52DE", "#BF5AF2")
-    pair(SPColor.categoryRed, "#FF3B30", "#FF453A")
-    pair(SPColor.categoryTeal, "#30B0C7", "#40C8E0")
-    pair(SPColor.categoryBrown, "#A2845E", "#AC8E68")
+    pair(SPColor.categoryBlue, "#2F80ED", "#4C8DF6")
+    pair(SPColor.categoryGreen, "#1FAF68", "#2DC27A")
+    pair(SPColor.categoryOrange, "#FF8A1F", "#FF9A3C")
+    pair(SPColor.categoryYellow, "#F5B000", "#FFC21A")
+    pair(SPColor.categoryPurple, "#8B5CF6", "#9D74FF")
+    pair(SPColor.categoryRed, "#EF4444", "#F65A5A")
+    pair(SPColor.categoryTeal, "#0EB2C2", "#22C3D2")
+    pair(SPColor.categoryPink, "#EC4899", "#F45FAA")
+    pair(SPColor.brand, "#5B5BF6", "#7272FF")
+    pair(SPColor.success, "#22B35E", "#30C46C")
+    pair(SPColor.canvas, "#EDF3FE", "#171B23")
+    pair(SPColor.card, "#FFFFFF", "#252B36")
+    pair(SPColor.pills[0].fill, "#DCEBFF", "#1E3A66")
+    pair(SPColor.pills[0].ink, "#1F5FBF", "#A9CBFF")
     pair(SPColor.highlightYellow, "#FACD5A", "#5E4613")
     pair(SPColor.highlightGreen, "#7CC868", "#294714")
     pair(SPColor.highlightBlue, "#69B0F1", "#1F3466")
     pair(SPColor.highlightPink, "#FB5C89", "#5E2D42")
     pair(SPColor.highlightPurple, "#C885DA", "#422D61")
     pair(SPColor.noteYellow, "#FFEB6B", "#FFEB6B")
-    check(Set(SPColor.all.map(\.name)).count == SPColor.all.count && SPColor.all.count == 25, "25 uniquely named colour tokens")
+    check(Set(SPColor.all.map(\.name)).count == SPColor.all.count && SPColor.all.count == 45, "45 uniquely named colour tokens (\(SPColor.all.count))")
+    check(SPColor.pills.count == 8 && Set(SPColor.pills.map(\.name)).count == 8, "eight file pills")
     let hex = try! NSRegularExpression(pattern: "^#[0-9A-F]{6}([0-9A-F]{2})?$")
     for token in SPColor.all {
         for value in [token.light, token.dark] {
             check(hex.firstMatch(in: value, range: NSRange(value.startIndex..., in: value)) != nil, "\(token.name): \(value) is #RRGGBB(AA)")
         }
     }
-    check(SPColor.accent.system == .controlAccentColor && SPColor.categoryTeal.system == .systemTeal, "semantic system colours draw")
+    check(SPColor.accent.system == .controlAccentColor && SPColor.label.system == .labelColor, "semantic system colours draw the chrome")
+    check(SPColor.categories.allSatisfy { $0.system == nil } && SPColor.brand.system == nil, "the brand palette is fixed, with its own dark values")
+    // A file's name is readable on its pill: the ink against the fill is at least 4.5 : 1, light and dark.
+    func luminance(_ hex: String) -> Double {
+        let c = NSColor(hex: hex).usingColorSpace(.sRGB)!
+        func lin(_ v: CGFloat) -> Double { let v = Double(v); return v <= 0.03928 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4) }
+        return 0.2126 * lin(c.redComponent) + 0.7152 * lin(c.greenComponent) + 0.0722 * lin(c.blueComponent)
+    }
+    func contrast(_ a: String, _ b: String) -> Double { let (x, y) = (luminance(a), luminance(b)); return (max(x, y) + 0.05) / (min(x, y) + 0.05) }
+    for pill in SPColor.pills {
+        check(contrast(pill.ink.light, pill.fill.light) >= 4.5 && contrast(pill.ink.dark, pill.fill.dark) >= 4.5,
+              "\(pill.name) pill text contrast \(String(format: "%.1f", contrast(pill.ink.light, pill.fill.light))) / \(String(format: "%.1f", contrast(pill.ink.dark, pill.fill.dark)))")
+    }
     check(SPColor.highlightYellow.system == nil && NSColor(hex: SPColor.highlightYellow.light).hexRGBA == "#FACD5AFF",
           "markup colours are fixed (Preview's)")
     check(ToolSection.allCases.map(\.color.name) == ["categoryBlue", "categoryGreen", "categoryOrange", "categoryYellow", "categoryPurple",
-                                                       "categoryRed", "categoryTeal", "categoryBrown"],
+                                                       "categoryRed", "categoryTeal", "categoryPink"],
           "section colours in ux §2.3 order")
+    check(ToolSection.allCases.allSatisfy { NSImage(systemSymbolName: $0.symbol, accessibilityDescription: nil) != nil }, "every section's symbol exists")
 
     // Type (ux §2.2)
     check(SPFont.body.size == 13 && SPFont.body.weight == .regular && SPFont.secondary.size == 11, "body 13, secondary 11")
@@ -145,10 +165,11 @@ private func coreTokenValues() {
     check(SPMetrics.PrimaryButton.height == 36 && SPMetrics.PrimaryButton.radius == 10 && SPMetrics.PrimaryButton.disabledOpacity == 0.4,
           "primary button 36 tall, radius 10, 40% disabled")
     check(SPMetrics.ToolsSheet.size == NSSize(width: 880, height: 620) && SPMetrics.ToolsSheet.columns == 5
-          && SPMetrics.Tile.size == NSSize(width: 150, height: 116) && SPMetrics.Tile.iconCircle == 36 && SPMetrics.Tile.symbolSize == 18, "sheet 880 × 620, 5 × 150 × 116 tiles")
+          && SPMetrics.Tile.size == NSSize(width: 150, height: 116) && SPMetrics.Tile.icon == 36 && SPMetrics.Tile.iconRadius == 10 && SPMetrics.Tile.symbolSize == 18, "sheet 880 × 620, 5 × 150 × 116 tiles")
     check(SPMetrics.Banner.height == 44 && SPMetrics.Banner.autoHideDelay == 8 && SPMetrics.MarkupBar.height == 31, "banner 44 / 8 s, markup bar 31")
-    check(SPMetrics.Organiser.defaultThumbnailWidth == 160 && SPMetrics.Organiser.thumbnailWidthRange == 80...320
-          && SPMetrics.Organiser.insertionLine == 3, "organiser 160 (80–320), 3 pt insertion line")
+    check(SPMetrics.Workspace.fileCard == NSSize(width: 184, height: 242) && SPMetrics.Workspace.pageCard == NSSize(width: 148, height: 214)
+          && SPMetrics.Workspace.fileGap == NSSize(width: 36, height: 28) && SPMetrics.DropTarget.insertionLine == 3,
+          "workspace cards 184 × 242 and 148 × 214, gaps wide enough for the +, 3 pt insertion line")
     check(SPMetrics.Welcome.size == NSSize(width: 760, height: 520) && SPMetrics.Welcome.targetSize == NSSize(width: 160, height: 140),
           "welcome 760 × 520, targets 160 × 140")
     check(NSImage(systemSymbolName: SPMetrics.Toolbar.toolsSymbol, accessibilityDescription: nil) != nil, "the Tools symbol exists")
@@ -159,6 +180,9 @@ private func coreTokenValues() {
     check(SPMotion.toolSwitch == 0.15 && SPMotion.banner == 0.3 && SPMotion.previewDebounce == 0.08 && SPMotion.pageRotate == 0.25,
           "switch 150 ms, banner 300 ms, preview 80 ms, rotate 250 ms")
     check(SPMotion.thumbnailShift == SPSpring(response: 0.3, dampingFraction: 0.8) && SPMotion.dragLiftScale == 1.05, "drag spring")
+    let hover = SPMotion.hoverSpring.animation("transform.scale", from: 1, to: 1.03)
+    check(hover.mass == 1 && abs(hover.stiffness - pow(2 * .pi / 0.32, 2)) < 0.001 && hover.settlingDuration < 1.5 && hover.duration == hover.settlingDuration,
+          "springs carry over to Core Animation (stiffness \(Int(hover.stiffness)), settles in \(String(format: "%.2f", hover.settlingDuration)) s)")
 }
 
 // MARK: - Tool catalog (ux §4.1)

@@ -43,7 +43,7 @@ enum AppRoutes {
     }
 
     /// One file opens (converted first if need be); a PDF the Print dialog made becomes a new document; several ask
-    /// whether to combine them (ux §3).
+    /// whether to combine them, in the workspace (ux §3, §6.2).
     static func openFiles(_ files: [URL]) {
         let printed = files.filter(isPrintedPDF)
         for file in printed { openPrinted(file) }
@@ -52,7 +52,7 @@ enum AppRoutes {
         if others.count == 1 || !askCombine(others.count) {
             Task { for file in others { await open(file) } }
         } else {
-            Services.tools?.openPanel(.combineFiles, for: nil, inputs: others)
+            Services.viewer?.combine(others)
         }
     }
 
@@ -68,7 +68,7 @@ enum AppRoutes {
         }
     }
 
-    /// "Combine these 3 files?" with Combine… (the queue, to order and pick pages first) or Open Separately.
+    /// "Combine these 3 files?" with Combine… (the workspace, to order and pick pages first) or Open Separately.
     private static func askCombine(_ count: Int) -> Bool {
         let alert = NSAlert()
         alert.messageText = AppStrings.combineFiles(count)

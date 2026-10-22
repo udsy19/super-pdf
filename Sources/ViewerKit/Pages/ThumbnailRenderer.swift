@@ -12,7 +12,7 @@ public final class ThumbnailRequest: @unchecked Sendable {
     public func cancel() { lock.withLock { cancelled = true } }
 }
 
-/// Page thumbnails for the sidebar, the organiser, search results and the welcome window's recents, rendered lazily and
+/// Page thumbnails for the sidebar, the workspace, search results and the welcome window's recents, rendered lazily and
 /// off the main thread (performance budgets: 500-page documents open in under 150 ms and scroll at 120 Hz; idle memory
 /// under 150 MB). PDFKit objects stay on the main actor (ARCHITECTURE "Rules"): the page's `CGPDFPage`, crop box and
 /// rotation are read there, and Quartz draws the page on a background queue. Quartz leaves annotations out, so a page

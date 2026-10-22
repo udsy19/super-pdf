@@ -57,9 +57,15 @@ enum Style {
         static let bodyTop: CGFloat = 8
         static let headerTop: CGFloat = 16
         static let headerGap: CGFloat = 8
-        static let headerLine: CGFloat = 16
-        static let dot: CGFloat = 8
+        /// A section header's line: its 20 pt icon.
+        static let headerLine: CGFloat = 20
         static let bottom: CGFloat = 24
+        /// The section chips: 12 pt under the search field, 28 pt capsules 6 pt apart.
+        static let chipsGap: CGFloat = 12
+        static let chipHeight: CGFloat = 28
+        static let chipGap: CGFloat = 6
+        /// The colour wash behind the title.
+        static let washHeight: CGFloat = 150
         /// Search focus ring (3 pt of the soft accent).
         static let focusRing: CGFloat = 3
     }
@@ -80,6 +86,8 @@ enum Style {
         static let footerTop: CGFloat = 12
         static let footerBottom: CGFloat = 14
         static let footerGap: CGFloat = 8
+        /// The section-coloured wash under the header.
+        static let washHeight: CGFloat = 64
     }
 }
 

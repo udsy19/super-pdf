@@ -52,7 +52,7 @@ public struct ViewerEnvironment {
 }
 
 /// `Services.viewer` (ARCHITECTURE "Core contracts"): the document windows, the welcome window, banners, the panel slot
-/// and the page organiser (ux §2, §3, §6).
+/// and the workspace (ux §2, §3, §6).
 @MainActor
 public final class Viewer: ViewerPresenting {
     public static let shared = Viewer()
@@ -106,7 +106,57 @@ public final class Viewer: ViewerPresenting {
     }
 
     public func showOrganiser(for document: DocumentHandle, adding files: [URL]) {
-        controllers[document.id]?.showOrganiser(adding: files)
+        controllers[document.id]?.showWorkspace(adding: files)
+    }
+
+    public func combine(_ files: [URL]) {
+        Task { await combine(files, from: welcome?.window) { [weak self] working in self?.welcome?.welcomeView.isWorking = working } }
+    }
+
+    /// Several files become one new unsaved document in the workspace, a card per file (ux §6.1, §6.2). The first PDF
+    /// among them opens at once as the document; the files before and after it go in around it, each on its own card while
+    /// it converts. With no PDF at all, the first file converts first (`working` says so meanwhile).
+    func combine(_ urls: [URL], from window: NSWindow?, working: (Bool) -> Void) async {
+        guard let documents = Services.documents, !urls.isEmpty else { return }
+        let palette = PageOrigin.palette.count
+        var start: (index: Int, data: Data)?
+        if let index = urls.firstIndex(where: Self.isReadablePDF), let data = try? Data(contentsOf: urls[index]) {
+            start = (index, data)
+        } else {
+            working(true)
+            if let url = await Self.convertedPDF(for: urls[0]), let data = try? Data(contentsOf: url) { start = (0, data) }
+            working(false)
+        }
+        guard let start else {
+            environment.alert(Strings.Errors.conversionFailed(urls[0].lastPathComponent), window)
+            return
+        }
+        do {
+            let handle = try documents.openUntitled(start.data, name: ViewerStrings.Welcome.combinedName)
+            guard let controller = controller(for: handle) else { return }
+            controller.pageActions.tag(0..<handle.pageCount, as: PageOrigin(fileName: urls[start.index].lastPathComponent, colorIndex: start.index % palette))
+            // The other files wait on their cards first, so the workspace opens on Files.
+            controller.pageActions.insertFiles(Array(urls[..<start.index]), atGap: 0, tagged: true, firstColor: 0)
+            controller.pageActions.insertFiles(Array(urls[(start.index + 1)...]), atGap: handle.pageCount, tagged: true,
+                                               firstColor: (start.index + 1) % palette)
+            controller.showWorkspace(adding: [])
+        } catch {
+            environment.alert(error.localizedDescription, window)
+        }
+    }
+
+    /// A PDF that opens without a password.
+    private static func isReadablePDF(_ url: URL) -> Bool {
+        guard UTType(filenameExtension: url.pathExtension)?.conforms(to: .pdf) == true, let pdf = PDFDocument(url: url) else { return false }
+        return !pdf.isLocked && pdf.pageCount > 0
+    }
+
+    /// A file that isn't a PDF, through ConvertKit, into the work folder.
+    private static func convertedPDF(for url: URL) async -> URL? {
+        guard let convert = Services.convert, convert.canConvertToPDF(url) else { return nil }
+        let folder = SuperPDFPaths.ensure(SuperPDFPaths.work.appendingPathComponent(UUID().uuidString, isDirectory: true))
+        let job = ConversionJob(inputs: [url], output: .pdf, destination: folder.appendingPathComponent(url.deletingPathExtension().lastPathComponent + ".pdf"))
+        return try? await convert.convert(job, progress: .ignored).outputs.first
     }
 
     public func showWelcome() {

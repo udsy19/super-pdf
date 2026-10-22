@@ -72,6 +72,12 @@ struct ToolPanelView: View {
         .padding(.top, Style.Panel.headerTop)
         .padding(.leading, Style.Panel.headerLeading)
         .padding(.trailing, Style.Panel.headerTrailing)
+        .background(alignment: .top) {
+            // A soft wash of the section's colour under the header (ux §5.1).
+            LinearGradient(colors: [Color(Style.category(session.tile.section)).opacity(0.12), .clear], startPoint: .top, endPoint: .bottom)
+                .frame(height: Style.Panel.washHeight)
+                .accessibilityHidden(true)
+        }
     }
 
     // MARK: Content
@@ -186,13 +192,18 @@ private struct HeaderButton: View {
     }
 }
 
+/// The section's icon square (ux §2.4) at panel size: its colour, lighter at the top, a white symbol.
 struct CategoryIcon: View {
     var tile: ToolTile
     var body: some View {
-        Image(systemName: tile.symbol).font(.system(size: 12, weight: .medium))
-            .foregroundStyle(Color(Style.category(tile.section)))
+        let color = Color(Style.category(tile.section))
+        let shape = RoundedRectangle(cornerRadius: 7, style: .continuous)
+        Image(systemName: tile.symbol).font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(.white)
             .frame(width: 24, height: 24)
-            .background(Circle().fill(Color(Style.category(tile.section)).opacity(SPMetrics.Tile.iconCircleOpacity)))
+            .background(shape.fill(color)
+                .overlay(shape.fill(LinearGradient(colors: [.white.opacity(0.24), .clear], startPoint: .top, endPoint: .bottom)))
+                .shadow(color: color.opacity(0.35), radius: 1.5, y: 1))
             .accessibilityHidden(true)
     }
 }
@@ -267,17 +278,22 @@ private struct OutputLine: View {
     }
 }
 
-/// The primary button while running: a bar with "Page 14 of 120 · Stop" (ux §5.1).
+/// The primary button while running: a bar with "Page 14 of 120 · Stop" (ux §5.1). The filled part carries a soft light
+/// that sweeps across it, so long jobs look alive (still with Reduce Motion).
 private struct ProgressBar: View {
     @ObservedObject var session: ToolSession
     var body: some View {
         let fraction: Double = if case .running(let update?) = session.phase { update.fraction } else { 0 }
+        let shape = RoundedRectangle(cornerRadius: SPMetrics.PrimaryButton.radius, style: .continuous)
         ZStack {
             GeometryReader { geo in
-                RoundedRectangle(cornerRadius: SPMetrics.PrimaryButton.radius, style: .continuous).fill(Color(Style.accent).opacity(0.15))
-                RoundedRectangle(cornerRadius: SPMetrics.PrimaryButton.radius, style: .continuous).fill(Color(Style.accent).opacity(0.35))
-                    .frame(width: geo.size.width * fraction)
-                    .animation(.linear(duration: 0.2), value: fraction)
+                shape.fill(Color(Style.accent).opacity(0.15))
+                shape.fill(LinearGradient(colors: [Color(Style.accent).opacity(0.45), Color(Style.accent).opacity(0.28)],
+                                          startPoint: .leading, endPoint: .trailing))
+                    .overlay { if !Style.reduceMotion { Shimmer() } }
+                    .clipShape(shape)
+                    .frame(width: max(geo.size.width * fraction, fraction > 0 ? 12 : 0))
+                    .animation(.spring(response: 0.4, dampingFraction: 0.8), value: fraction)
             }
             HStack(spacing: 0) {
                 Text((session.progressLabel ?? "") + ToolsKitStrings.progressSeparator).foregroundStyle(Color(Style.label))
@@ -288,6 +304,22 @@ private struct ProgressBar: View {
         .frame(maxWidth: .infinity, minHeight: SPMetrics.PrimaryButton.height, maxHeight: SPMetrics.PrimaryButton.height)
         .accessibilityElement(children: .contain)
         .accessibilityValue(session.progressLabel ?? "")
+    }
+}
+
+/// A band of light that sweeps across a progress fill every 1.6 s.
+private struct Shimmer: View {
+    var body: some View {
+        TimelineView(.animation) { context in
+            let phase = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1.6) / 1.6
+            GeometryReader { geo in
+                LinearGradient(colors: [.white.opacity(0), .white.opacity(0.35), .white.opacity(0)], startPoint: .leading, endPoint: .trailing)
+                    .frame(width: 60)
+                    .offset(x: -60 + (geo.size.width + 60) * phase)
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }
 

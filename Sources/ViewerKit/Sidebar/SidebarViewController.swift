@@ -16,7 +16,7 @@ final class SidebarViewController: NSViewController {
 
     init(owner: DocumentWindowController) {
         self.owner = owner
-        thumbnails = PageGridViewController(kind: .sidebar, owner: owner)
+        thumbnails = PageGridViewController(owner: owner)
         super.init(nibName: nil, bundle: nil)
     }
 

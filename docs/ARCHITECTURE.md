@@ -45,7 +45,7 @@ Sources/
                      operations, recent documents, document-level state (view state)
   ViewerKit/         main window: toolbar (ux §2.1), sidebar modes (thumbnails with drag/drop, contents, notes,
                      bookmarks, attachments, search, signatures), PDFView host, reader mode, read aloud, find,
-                     page organiser (ux §6.2), result banner, welcome window (ux §6.1), drag & drop (ux §3)
+                     the workspace (Combine and Rearrange as cards, ux §6.2), welcome window (ux §6.1), drag & drop (ux §3)
   ToolsKit/          the Tools sheet (ux §4), the panel host and archetypes A–E and G (ux §5), scope control, live
                      preview overlay (PDFPageOverlayViewProvider), progress/error presentation, favourites, frecency,
                      search with synonyms; registers every tool's panel from the catalog + the implementing service
@@ -152,7 +152,8 @@ What `SuperPDFCore` actually declares, where it differs from or adds to the tabl
   `FormServicing`, `Signing`, `Protecting` and `Fixing` compose the listed sub-protocols. `Fixing` also owns
   `compare(_:with:textOnly:progress:)` for Compare files.
 - **Extra slots.** `Services.viewer` (`ViewerPresenting`: window controller per document, PDFView, selection, tool
-  panel slot, banner, sidebar, organiser, welcome, and the locked-PDF password asked inside the document's window,
+  panel slot, banner, sidebar, workspace (`showOrganiser`, and `combine(_:)` for several files), welcome, and the
+  locked-PDF password asked inside the document's window,
   which DocumentKit's prompter uses), `Services.settings` (`SettingsPresenting`), and
   `Services.toolProviders`: every tool module appends its `ToolProviding` in `install()`; ToolsKit reads the list when
   it installs (after them) and registers `Services.tools`.
@@ -226,6 +227,19 @@ What the work packages after WP1 added to `SuperPDFCore`, beyond the notes above
   `UpdateChecking.checkNow()` checks even when the automatic checks are off (what it stages installs on quit or from
   `installNow()`, never on its own). App Intents are not built: the Command Line Tools have no
   `appintentsmetadataprocessor`, so Shortcuts could not see them; Shortcuts can open `superpdf://` links instead.
+
+### Contract notes (the cheerful look)
+
+- **Brand palette.** `SPColor`'s section colours are fixed brand colours with their own dark values (Scan is
+  `categoryPink`), plus `brand`, `success`, `canvas`, `card` and eight `SPPill`s (a pastel `fill` and a deep `ink`) for
+  files; chrome and text stay semantic system colours. `SPIcon` / `SPIconView` draw the rounded-square icon (a brand
+  colour, a white symbol) that ToolsKit and ViewerKit share; `ToolSection.symbol` names each section's glyph.
+- **Motion.** `SPSpring.animation(_:from:to:)` turns a spring into a `CASpringAnimation`; `SPMotion.hoverSpring` (hover),
+  `thumbnailShift` (the workspace's cards making room), `pop` and `confetti` (the result banner).
+- **The workspace.** `ViewerPresenting.combine(_:)` opens it on several files (the Dock's "Combine…", the welcome
+  window); `showOrganiser(for:adding:)` opens it on a document. ViewerKit's `WorkspaceModel` (files, pages, converting
+  files, gaps, sorts) is a value the views and the self-test share; edits still go through `PageActions` and
+  `Services.pages`, so every gesture is one undo step and nothing is written until Save.
 
 ## Launch sequence
 
@@ -322,9 +336,9 @@ machine, undo/redo of page ops, repair path with a damaged fixture.
 
 **WP4 — ViewerKit** (heavy). `Sources/ViewerKit/**`. Main window chrome and toolbar to the metrics of ux §2.1, sidebar
 modes (ux §6.3) with the thumbnail collection view (drag reorder, drop files, drag-out file promises, context menu),
-PDFView host and display modes, reader mode, read aloud, find bar + results sidebar, page organiser (ux §6.2),
+PDFView host and display modes, reader mode, read aloud, find bar + results sidebar, the workspace (ux §6.2),
 result banner (ux §7.3), welcome window (ux §6.1), window-wide drag & drop (ux §3), Preview's menu tree and
-shortcuts (ux §8). Tests: drop-target decisions table, organiser model (reorder/multi-select/insert from second file),
+shortcuts (ux §8). Tests: drop-target decisions table, page grid and workspace models (reorder/multi-select/insert from second file),
 offscreen renders against the mockups' metrics.
 
 **WP5 — ToolsKit** (heavy). `Sources/ToolsKit/**`. The Tools sheet (ux §4: search with synonyms, recently used by

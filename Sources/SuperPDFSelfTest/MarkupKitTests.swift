@@ -690,6 +690,7 @@ private final class MarkupTestViewer: ViewerPresenting {
     func showBanner(_ banner: ResultBanner, in document: DocumentHandle) {}
     func showSidebar(_ mode: SidebarMode, in document: DocumentHandle) {}
     func showOrganiser(for document: DocumentHandle, adding files: [URL]) {}
+    func combine(_ files: [URL]) {}
     func showWelcome() {}
     func showCropHandles(_ handles: CropHandles?, in document: DocumentHandle) {}
     func password(forLocked fileName: String, retry: Bool) async -> String? { nil }

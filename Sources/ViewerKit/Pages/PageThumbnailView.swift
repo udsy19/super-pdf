@@ -1,11 +1,11 @@
 import AppKit
 import SuperPDFCore
 
-/// How a page thumbnail looks in the sidebar and in the organiser (ux §2.1, §6.2; main-window.png, organizer.png).
+/// How a page thumbnail looks in the sidebar (ux §2.1; main-window.png) and in the search results.
 struct ThumbnailStyle {
-    /// Corner radius of the page itself (the mockups: 3 pt in the sidebar, 6 pt in the organiser).
+    /// Corner radius of the page itself (the mockup: 3 pt).
     var pageRadius: CGFloat
-    /// 1 pt `separatorColor` border (sidebar) or a 0.5 pt hairline (organiser).
+    /// 1 pt `separatorColor` border (an alpha under 1 draws a black hairline of that alpha instead).
     var borderWidth: CGFloat
     var borderAlpha: CGFloat
     var shadowBlur: CGFloat
@@ -28,9 +28,6 @@ struct ThumbnailStyle {
                                         shadowBlur: SPMetrics.Sidebar.thumbnailShadow, shadowAlpha: 0.12,
                                         ringRadius: SPMetrics.Sidebar.thumbnailRadius, ringWidth: SPMetrics.Sidebar.selectionRing,
                                         ringOffset: 2, selectionFill: true, labelGap: 5)
-    static let organiser = ThumbnailStyle(pageRadius: 6, borderWidth: 0.5, borderAlpha: 0.08, shadowBlur: 5, shadowAlpha: 0.18,
-                                          ringRadius: SPMetrics.Organiser.radius, ringWidth: 2.5, ringOffset: 3, selectionFill: false,
-                                          labelGap: 8)
 
     /// The cell size for a page of `aspect` (height / width) shown `pageWidth` wide.
     func cellSize(pageWidth: CGFloat, aspect: CGFloat) -> NSSize {
@@ -38,7 +35,7 @@ struct ThumbnailStyle {
     }
 }
 
-/// One page: its picture, the selection ring, the file-colour bar and the page number underneath. Drawn in
+/// One page: its picture, the selection ring and the page number underneath. Drawn in
 /// `draw(_:)` (no per-frame work while scrolling: the layer caches it).
 final class PageThumbnailView: NSView {
     var style: ThumbnailStyle = .sidebar { didSet { needsDisplay = true } }
@@ -47,10 +44,6 @@ final class PageThumbnailView: NSView {
     var aspect: CGFloat = 11 / 8.5 { didSet { needsDisplay = true } }
     var label = "" { didSet { needsDisplay = true } }
     var isSelected = false { didSet { if isSelected != oldValue { needsDisplay = true } } }
-    /// The bar of a page that came from another file (organiser).
-    var originColor: NSColor? { didSet { needsDisplay = true } }
-    /// The page being dragged stays behind at 25 % (organizer.png).
-    var isGhosted = false { didSet { if isGhosted != oldValue { needsDisplay = true } } }
 
     override var isFlipped: Bool { true }
     override var wantsUpdateLayer: Bool { false }
@@ -75,7 +68,6 @@ final class PageThumbnailView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         guard let context = NSGraphicsContext.current?.cgContext else { return }
-        if isGhosted { context.setAlpha(0.25); context.beginTransparencyLayer(auxiliaryInfo: nil) }
         let page = pageRect
         let accent = SPColor.accent.color
         let ringRect = page.insetBy(dx: -style.ringOffset - style.ringWidth / 2, dy: -style.ringOffset - style.ringWidth / 2)
@@ -106,10 +98,6 @@ final class PageThumbnailView: NSView {
             context.draw(image, in: page)
             context.restoreGState()
         }
-        if let originColor {
-            originColor.setFill()
-            NSRect(x: page.minX, y: page.maxY - SPMetrics.Organiser.fileColorBar, width: page.width, height: SPMetrics.Organiser.fileColorBar).fill()
-        }
         NSGraphicsContext.restoreGraphicsState()
 
         let border = NSBezierPath(roundedRect: page.insetBy(dx: style.borderWidth / 2, dy: style.borderWidth / 2),
@@ -131,6 +119,5 @@ final class PageThumbnailView: NSView {
         paragraph.lineBreakMode = .byTruncatingMiddle
         let text = NSAttributedString(string: label, attributes: [.font: font, .foregroundColor: color, .paragraphStyle: paragraph])
         text.draw(in: NSRect(x: 0, y: page.maxY + style.labelGap, width: bounds.width, height: ThumbnailStyle.labelHeight))
-        if isGhosted { context.endTransparencyLayer() }
     }
 }

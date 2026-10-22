@@ -458,9 +458,9 @@ struct RowCard: View {
                     case .checkbox(let selected, _): CheckBox(isOn: selected.contains(row.id))
                     case .fact:
                         Image(systemName: "checkmark").font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(Color(SPColor.categoryGreen.color))
+                            .foregroundStyle(Color(SPColor.success.color))
                             .frame(width: 20, height: 20)
-                            .background(Circle().fill(Color(SPColor.categoryGreen.color).opacity(0.15)))
+                            .background(Circle().fill(Color(SPColor.success.color).opacity(0.15)))
                     }
                     Text(row.title).font(.sp(size: 12)).foregroundStyle(Color(Style.label)).lineLimit(1)
                     Spacer(minLength: 6)
@@ -535,22 +535,26 @@ struct BorderedButtonStyle: ButtonStyle {
     }
 }
 
-/// The primary button (ux §2.1): full width, 36 pt, 10 pt corners, accent (red when destructive), 13 pt semibold white.
+/// The primary button (ux §2.1): full width, 36 pt, 10 pt corners, accent (red when destructive), 13 pt semibold white,
+/// a little light along its top edge; it gives under the finger on a spring when pressed.
 struct PrimaryButtonStyle: ButtonStyle {
     var isDestructive: Bool
     @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
+        let shape = RoundedRectangle(cornerRadius: SPMetrics.PrimaryButton.radius, style: .continuous)
+        let fill = Color(isDestructive ? Style.destructive : Style.accent)
         configuration.label
             .font(.sp(SPFont.primaryButton))
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity, minHeight: SPMetrics.PrimaryButton.height, maxHeight: SPMetrics.PrimaryButton.height)
-            .background(RoundedRectangle(cornerRadius: SPMetrics.PrimaryButton.radius, style: .continuous)
-                .fill(Color(isDestructive ? Style.destructive : Style.accent))
-                .overlay(RoundedRectangle(cornerRadius: SPMetrics.PrimaryButton.radius, style: .continuous)
-                    .fill(Color.black.opacity(configuration.isPressed ? 0.12 : 0)))
-                .shadow(color: .black.opacity(0.15), radius: 1, y: 1))
+            .background(shape.fill(fill)
+                .overlay(shape.fill(LinearGradient(colors: [.white.opacity(0.16), .clear], startPoint: .top, endPoint: .center)))
+                .overlay(shape.fill(Color.black.opacity(configuration.isPressed ? 0.12 : 0)))
+                .shadow(color: fill.opacity(isEnabled ? 0.35 : 0), radius: 3, y: 1.5))
             .opacity(isEnabled ? 1 : SPMetrics.PrimaryButton.disabledOpacity)
+            .scaleEffect(configuration.isPressed && !Style.reduceMotion ? 0.97 : 1)
+            .animation(.spring(response: 0.25, dampingFraction: 0.55), value: configuration.isPressed)
             .contentShape(Rectangle())
     }
 }
@@ -599,11 +603,11 @@ struct FilesZone: View {
                 }
                 return true
             }
-            ForEach(files, id: \.self) { file in
+            ForEach(Array(files.enumerated()), id: \.element) { index, file in
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 6) {
                         Image(nsImage: NSWorkspace.shared.icon(forFile: file.path)).resizable().frame(width: 16, height: 16)
-                        Text(file.lastPathComponent).font(.sp(size: 12)).lineLimit(1).truncationMode(.middle)
+                        FilePill(name: file.lastPathComponent, pill: SPColor.pills[index % SPColor.pills.count])
                         Spacer(minLength: 4)
                         Button { onChange(files.filter { $0 != file }) } label: { Image(systemName: "xmark").font(.system(size: 9, weight: .bold)) }
                             .buttonStyle(.plain).foregroundStyle(Color(Style.secondary)).accessibilityLabel(Strings.Panel.cancel)
@@ -624,6 +628,18 @@ struct FilesZone: View {
             guard response == .OK else { return }
             onChange(allowsMultiple ? files + panel.urls : Array(panel.urls.prefix(1)))
         }
+    }
+}
+
+/// A file's name in its coloured pill (ux §6.2), as the workspace shows files: the same colours in the same order.
+struct FilePill: View {
+    var name: String
+    var pill: SPPill
+    var body: some View {
+        Text(name).font(.sp(SPFont.pill)).lineLimit(1).truncationMode(.middle)
+            .foregroundStyle(Color(pill.ink.color))
+            .padding(.horizontal, 8).frame(height: 20)
+            .background(Capsule().fill(Color(pill.fill.color)))
     }
 }
 

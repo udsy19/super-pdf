@@ -1,0 +1,18 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Super PDF — Workspace</title><link rel="stylesheet" href="shared.css"></head>
+<body><script src="shared.js"></script>
+<script>
+// The Combine workspace in Files mode (ux §6.2): four files dropped on the welcome window, one still converting.
+const S = SP;
+const x = (c) => 128 + c * 220, y = (r) => 28 + r * 270;
+const cards = [
+  S.fileCard({ x: x(0), y: y(0), name: "Lease agreement.pdf", color: "sky", caption: "12 pages", count: 12, kind: "text", sel: true }),
+  S.fileCard({ x: x(1), y: y(0), name: "Floor plan.png", color: "pink", caption: "1 page", count: 1, kind: "photo", landscape: true, hover: true }),
+  S.fileCard({ x: x(2), y: y(0), name: "Budget 2026.xlsx", color: "peach", caption: "Converting to PDF…", count: 1, kind: "table", converting: 62 }),
+  S.fileCard({ x: x(3), y: y(0), name: "Schedule.pdf", color: "mint", caption: "3 pages", count: 3, kind: "letter" }),
+  S.dropCard({ x: x(0), y: y(1) }),
+];
+const ins = [0, 1, 2].map((c) => S.inserter(x(c) + 184 + 18, y(0) + 12 + 84)).join("");
+const full = `<div class="ws"><div class="grid-w">${cards.join("")}${ins}</div>
+  ${S.wsStatus("<b>4 files</b> · 17 pages · 1 selected", "Drag to reorder · Space to preview · Drop more files anywhere")}</div>`;
+S.render({ titlebarHTML: S.wsToolbar({ mode: "files", title: "Combined", subtitle: "4 files · 17 pages" }), full });
+</script></body></html>

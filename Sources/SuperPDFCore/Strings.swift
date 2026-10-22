@@ -160,6 +160,12 @@ public enum Strings {
             return ResultBanner("Combined \(fileCount) into \(pageCount).", emphasis: [fileCount, pageCount], actions: [.save])
         }
 
+        /// The workspace's Finish after rearranging (ux §6.2): "All set: 12 pages, in your order." with Save….
+        public static func arranged(pages: Int) -> ResultBanner {
+            let pageCount = Formatting.count(pages, "page", "pages")
+            return ResultBanner("All set: \(pageCount), in your order.", emphasis: [pageCount], actions: [.save])
+        }
+
         /// "Saved “Report.docx”." with Open in <app> (Word, Excel, PowerPoint…) and Show in Finder.
         public static func saved(_ fileName: String, openIn app: String?) -> ResultBanner {
             ResultBanner("Saved \(quoted(fileName)).", actions: (app.map { [.openIn(appName: $0)] } ?? []) + [.showInFinder])

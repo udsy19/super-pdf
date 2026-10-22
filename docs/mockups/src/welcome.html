@@ -2,22 +2,23 @@
 <body><script src="shared.js"></script>
 <script>
 const I = SP.I;
-const target = (cls, icon, nm, hn, kbd, hover) => `<div class="target ${hover?"hover":""}"><div class="ic ${cls}">${I[icon]}</div><div class="nm">${nm}</div><div class="hn">${hn}</div>${kbd?`<span class="kbd">${kbd}</span>`:""}</div>`;
+const target = (cls, key, icon, nm, hn, kbd, hover) => `<div class="target ${hover?"hover":""}" style="--c:var(--${key})"><div class="ic ${cls}">${I[icon]}</div><div class="nm">${nm}</div><div class="hn">${hn}</div>${kbd?`<span class="kbd">${kbd}</span>`:""}</div>`;
 const body = `<div class="welcome">
-  <div class="logo">${I.doc}</div>
+  <div class="logo">${I.docFill}</div>
   <h1>Super PDF</h1>
-  <div class="sub">Open a PDF, or drop any file here to turn it into one.</div>
+  <div class="sub">Drop in PDFs, photos or Office files — we’ll take it from there.</div>
   <div class="targets">
-    ${target("c-blue","doc","Open a PDF","Or drop one anywhere in this window","⌘O", true)}
-    ${target("c-blue","docs","Combine files","Make one PDF from several files or pictures")}
-    ${target("c-brown","scanner","Scan","With your iPhone or a scanner")}
-    ${target("c-green","any","Convert a file","Word, Excel, photos, web pages and more → PDF")}
+    ${target("c-indigo","brand","doc","Open a PDF","Or drop one anywhere in this window","⌘O", true)}
+    ${target("c-blue","pages","docs","Combine files","Put PDFs, photos and documents together")}
+    ${target("c-pink","scan","scanner","Scan","With your iPhone or a scanner")}
+    ${target("c-green","convert","convertI","Convert a file","Word, Excel, photos and more → PDF")}
   </div>
   <div class="recent"><h3>Recent</h3>
-    <div class="row"><span class="ti"></span><span class="nm">Lease agreement.pdf</span><span class="meta"><span>Yesterday, 4:12 PM</span><span>12 pages</span><span>6.1 MB</span></span></div>
+    <div class="row hover"><span class="ti"></span><span class="nm">Lease agreement.pdf</span><span class="meta"><span>Yesterday, 4:12 PM</span><span>12 pages</span><span>6.1 MB</span></span></div>
     <div class="row"><span class="ti"></span><span class="nm">Tax return 2025.pdf</span><span class="meta"><span>Monday</span><span>44 pages</span><span>8.0 MB</span></span></div>
     <div class="row"><span class="ti"></span><span class="nm">Grandma’s recipes.pdf</span><span class="meta"><span>12 Sep</span><span>6 pages</span><span>310 KB</span></span></div>
   </div>
+  <div class="tip">${I.any}Drop one file to open it, or several to put them together.</div>
 </div>`;
-SP.render({ small: true, titlebarHTML: `<div class="titlebar" style="border-bottom:0;background:transparent;position:absolute;left:0;right:0;top:0"><div class="tb-left"><div class="lights"><i class="r"></i><i class="y"></i><i class="g"></i></div></div><div></div><div></div></div>`, full: body });
+SP.render({ small: true, titlebarHTML: `<div class="titlebar" style="border-bottom:0;background:transparent;position:absolute;left:0;right:0;top:0;z-index:6"><div class="tb-left"><div class="lights"><i class="r"></i><i class="y"></i><i class="g"></i></div></div><div></div><div></div></div>`, full: body });
 </script></body></html>

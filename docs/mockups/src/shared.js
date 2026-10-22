@@ -79,7 +79,46 @@
     bars: svg('<path d="M4 6h16M4 12h16M4 18h16"/>'),
     grid: svg('<rect x="3" y="3" width="8" height="8"/><rect x="13" y="3" width="8" height="8"/><rect x="3" y="13" width="8" height="8"/><rect x="13" y="13" width="8" height="8"/>'),
     expand: svg('<path d="M4 10V4h6M20 14v6h-6"/><path d="M4 4l6 6M20 20l-6-6"/>'),
+    zoom: svg('<circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5M8.5 11h5M11 8.5v5"/>'),
+    dup: svg('<rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/><path d="M14 11v6M11 14h6"/>'),
+    sort: svg('<path d="M7 4v16M3.5 7.5L7 4l3.5 3.5M17 20V4M13.5 16.5L17 20l3.5-3.5"/>'),
+    arrowR: svg('<path d="M5 12h14M13 6l6 6-6 6"/>'),
+    selAll: svg('<circle cx="12" cy="12" r="8.5"/><path d="M8.5 12.2l2.4 2.4 4.6-5"/>'),
+    pagesI: svg('<rect x="4" y="3.5" width="7" height="8" rx="1.5"/><rect x="13" y="3.5" width="7" height="8" rx="1.5"/><rect x="4" y="13.5" width="7" height="8" rx="1.5"/><rect x="13" y="13.5" width="7" height="8" rx="1.5"/>'),
+    filesI: svg('<path d="M8 3h7l4 4v10H8z"/><path d="M15 3v4h4"/><path d="M5 7v13h11"/>'),
+    listI: svg('<rect x="3.5" y="4.5" width="4" height="4" rx="1"/><rect x="3.5" y="15.5" width="4" height="4" rx="1"/><path d="M11 6.5h9.5M11 17.5h9.5"/>'),
+    convertI: svg('<path d="M4.5 10a7.5 7.5 0 0 1 13.2-3.8L20 8.5"/><path d="M19.5 14a7.5 7.5 0 0 1-13.2 3.8L4 15.5"/><path d="M20 3.5v5h-5M4 20.5v-5h5"/>'),
+    pencil: svg('<path d="M4 20l4-1 10.5-10.5a2.1 2.1 0 0 0-3-3L5 16z"/>'),
+    scanI: svg('<path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><path d="M4 12h16"/>'),
+    plusBig: svg('<path d="M12 5v14M5 12h14"/>'),
+    trashR: svg('<path d="M4 7h16M9 7V4h6v3M6 7l1 14h10l1-14"/><path d="M10 11v6M14 11v6"/>'),
+    docFill: svg('<path d="M7 3h7l5 5v12a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/>'),
   };
+
+  /** Lines that suggest a page's contents: text, a table, a picture or slides. */
+  function mini(kind, color) {
+    const L = (top, extra = "") => `<div class="mini" style="top:${top}%;${extra}"></div>`;
+    if (kind === "photo") return `<div style="position:absolute;inset:0;background:linear-gradient(160deg,#cfe3ff,#9fc3f7 40%,#e9d2ff)"></div>
+      <div style="position:absolute;left:14%;right:14%;top:16%;bottom:16%;border:2px solid rgba(255,255,255,.85);border-radius:3px"></div>
+      <div style="position:absolute;left:22%;top:26%;width:22%;height:16%;border-radius:2px;background:rgba(255,255,255,.9)"></div>
+      <div style="position:absolute;left:52%;top:26%;width:26%;height:38%;border-radius:2px;background:rgba(255,255,255,.7)"></div>
+      <div style="position:absolute;left:22%;top:48%;width:22%;height:16%;border-radius:2px;background:rgba(255,255,255,.8)"></div>`;
+    if (kind === "table") {
+      let rows = "";
+      for (let i = 0; i < 9; i++) rows += `<div style="position:absolute;left:12%;right:12%;top:${26 + i * 6}%;height:1px;background:#c9d6c9"></div>`;
+      return L(12, "height:4px;background:#5c8f5c;right:40%") + `<div style="position:absolute;left:12%;right:12%;top:26%;height:6%;background:#dff0df"></div>` + rows
+        + `<div style="position:absolute;left:38%;top:26%;bottom:20%;width:1px;background:#c9d6c9"></div><div style="position:absolute;left:62%;top:26%;bottom:20%;width:1px;background:#c9d6c9"></div>`;
+    }
+    if (kind === "letter") return L(12, "height:4px;background:#9b9b9b;right:50%") + L(20, "right:60%") + L(30) + L(35) + L(40) + L(45, "right:30%") + L(55) + L(60) + L(65, "right:40%") + L(78, "right:55%");
+    if (kind === "img") return L(12, "height:4px;background:#9b9b9b;right:35%") + L(22) + `<div class="mini img" style="top:30%"></div>` + L(58) + L(63) + L(68);
+    return L(12, "height:4px;background:#9b9b9b;right:35%") + L(22) + L(27) + L(32) + L(40) + L(45) + L(50) + L(58) + L(63) + L(68) + L(76);
+  }
+
+  /** A page picture `w` wide (8.5 × 11). */
+  function pageBox(kind, w, extraClass = "", style = "") {
+    const h = Math.round(w * 11 / 8.5);
+    return `<div class="sheetpg ${extraClass}" style="width:${w}px;height:${h}px;${style}">${mini(kind)}</div>`;
+  }
 
   const lease = [
     { h1: "Residential Lease Agreement", sub: "Prepared 14 September 2026 · 12 pages", body: `
@@ -154,8 +193,10 @@
     return `<div class="sidebar"><div class="thumbs">${t}</div><div class="sb-bottom"><span>12 pages</span><span class="plus">${I.plus}</span></div></div>`;
   }
 
+  const sectionOf = { "c-blue": "pages", "c-green": "convert", "c-orange": "edit", "c-yellow": "markup", "c-purple": "sign",
+                      "c-red": "protect", "c-teal": "fix", "c-pink": "scan", "c-indigo": "brand" };
   function panelHeader(o) {
-    return `<div class="ph"><div class="row"><span class="back">${I.chevL}</span><span class="ttl"><span class="cat ${o.cat}">${I[o.icon]}</span>${o.title}</span><span class="close">${I.x}</span></div><div class="hint">${o.hint}</div>${o.after || ""}</div>`;
+    return `<div class="ph" style="--c:var(--${sectionOf[o.cat] || "pages"})"><div class="row"><span class="back">${I.chevL}</span><span class="ttl"><span class="cat ${o.cat}">${I[o.icon]}</span>${o.title}</span><span class="close">${I.x}</span></div><div class="hint">${o.hint}</div>${o.after || ""}</div>`;
   }
 
   function render(o) {
@@ -170,5 +211,84 @@
     </div>`);
   }
 
-  window.SP = { I, pageHTML, thumbHTML, toolbar, sidebar, panelHeader, render };
+
+  // ---------- workspace (ux §6.2) ----------
+  const pill = (color, text, style = "") => `<span class="pill" style="background:var(--pill-${color});color:var(--ink-${color});${style}">${text}</span>`;
+
+  /** The workspace toolbar: View · Files | Pages · title · Add ▾ ⟲ ⟳ 🗑 · Select all · Sort ▾ · grid | list · Finish. */
+  function wsToolbar(o) {
+    const files = o.mode !== "pages";
+    return `<div class="titlebar" style="grid-template-columns:auto 1fr auto">
+      <div class="tb-left">
+        <div class="lights"><i class="r"></i><i class="y"></i><i class="g"></i></div>
+        <div class="tbtn icon-only view-pop">${I.sidebar}<span class="chev">${I.chev}</span></div>
+        <div class="tb-sep"></div>
+        <div class="wseg"><span class="${files ? "on" : ""}">${I.filesI}Files</span><span class="${files ? "" : "on"}">${I.pagesI}Pages</span></div>
+        <div style="margin-left:10px;line-height:1.15"><div style="font-weight:600">${o.title || "Combined"}</div><div style="font-size:11px;color:var(--label2)">${o.subtitle || ""}</div></div>
+      </div>
+      <div></div>
+      <div class="tb-right" style="gap:4px">
+        <div class="tbtn icon-only menu">${I.plus}<span class="chev">${I.chev}</span></div>
+        <div class="tbtn icon-only">${I.rotate}</div><div class="tbtn icon-only">${I.rotateR}</div><div class="tbtn icon-only">${I.trash}</div>
+        <div class="tb-sep"></div>
+        <div class="tbtn icon-only">${I.selAll}</div>
+        <div class="tbtn icon-only menu">${I.sort}<span class="chev">${I.chev}</span></div>
+        <div class="wseg icons"><span class="on">${I.pagesI}</span><span>${I.listI}</span></div>
+        <div style="width:8px"></div>
+        <div class="tbtn prominent finish">Finish${I.arrowR}</div>
+      </div>
+    </div>`;
+  }
+
+  /** A file card (184 × 242): page stack, checkbox, coloured pill, "12 pages"; hover shows the toolbar. */
+  function fileCard(o) {
+    const w = 184, h = 242, box = 168;
+    let pages = "";
+    if (o.landscape) {
+      pages = `<div class="sheetpg" style="width:156px;height:117px;left:${(160 - 156) / 2}px;top:${(box - 117) / 2}px">${mini(o.kind)}</div>`;
+    } else {
+      const pw = 130, left = (160 - pw) / 2;
+      if (o.count > 2) pages += `<div class="sheetpg back1" style="width:${pw}px;height:${box}px;left:${left + 6}px;top:0"></div>`;
+      if (o.count > 1) pages += `<div class="sheetpg back2" style="width:${pw}px;height:${box}px;left:${left - 4}px;top:0"></div>`;
+      pages += `<div class="sheetpg" style="width:${pw}px;height:${box}px;left:${left}px;top:0">${o.converting ? "" : mini(o.kind)}${o.converting ? `<div class="spin" style="left:${pw / 2 - 17}px;top:${box / 2 - 30}px"></div><div class="prog" style="top:${box / 2 + 18}px;left:18px;right:18px"><i style="width:${o.converting}%"></i></div>` : ""}</div>`;
+    }
+    const tools = o.hover ? `<div class="hbar"><i class="on">${I.zoom}<span class="tip" style="left:13px">Preview</span></i><i>${I.rotateR}</i><i>${I.dup}</i><i>${I.trashR}</i></div>` : "";
+    return `<div class="wcard ${o.sel ? "sel" : ""} ${o.hover ? "hover" : ""}" style="left:${o.x}px;top:${o.y}px;width:${w}px;height:${h}px">
+      <div class="thumbbox" style="height:${box}px;position:absolute">${pages}</div>
+      <span class="cb"></span>${tools}
+      ${pill(o.color, o.name, "top:190px")}
+      <div class="cap" style="top:218px">${o.caption}</div></div>`;
+  }
+
+  /** A page card (148 × 214): the page, checkbox, the file's pill and "Page 3". */
+  function pageCard(o) {
+    const w = 148, h = 214, pw = 116, ph = 150;
+    const tools = o.hover ? `<div class="hbar" style="height:28px"><i style="width:24px;height:24px">${I.zoom}</i><i style="width:24px;height:24px">${I.rotateR}</i><i style="width:24px;height:24px">${I.dup}</i><i style="width:24px;height:24px">${I.trashR}</i></div>` : "";
+    const page = o.landscape
+      ? `<div class="sheetpg" style="width:128px;height:96px;left:0;top:${(ph - 96) / 2}px">${mini(o.kind)}</div>`
+      : `<div class="sheetpg" style="width:${pw}px;height:${ph}px;left:${(128 - pw) / 2}px;top:0">${mini(o.kind)}</div>`;
+    return `<div class="wcard ${o.cls || ""} ${o.sel ? "sel" : ""} ${o.hover ? "hover" : ""}" style="left:${o.x}px;top:${o.y}px;width:${w}px;height:${h}px;border-radius:14px;${o.style || ""}">
+      ${o.cls === "hole" ? "" : `<div style="position:absolute;left:10px;top:10px;width:128px;height:${ph}px">${page}</div>
+      <span class="cb"></span>${tools}
+      ${pill(o.color, o.name, "top:168px;height:20px;line-height:20px;font-size:11px;max-width:128px;padding:0 9px")}
+      <div class="cap" style="top:192px">Page ${o.n}</div>`}</div>`;
+  }
+
+  /** The dashed "add files" card that ends the grid. */
+  function dropCard(o) {
+    const fmt = [["PDF", "var(--protect)"], ["JPG", "var(--scan)"], ["DOC", "var(--pages)"], ["XLS", "var(--convert)"], ["PPT", "var(--edit)"]]
+      .map(([t, c]) => `<span style="background:${c}">${t}</span>`).join("");
+    return `<div class="wcard drop" style="left:${o.x}px;top:${o.y}px;width:${o.w || 184}px;height:${o.h || 242}px">
+      <div class="big" style="top:52px">${I.plusBig}</div>
+      <div class="t" style="top:116px">Add PDF, image, Word, Excel, and PowerPoint files</div>
+      <div class="s" style="top:170px">or drop them anywhere</div>
+      <div class="fmt" style="top:196px">${fmt}</div></div>`;
+  }
+
+  const inserter = (x, y, soft) => `<div class="inserter ${soft ? "soft" : ""}" style="left:${x - 12}px;top:${y - 12}px">${I.plus}</div>`;
+
+  function wsStatus(left, right) { return `<div class="status"><span>${left}</span><span>${right}</span></div>`; }
+
+  window.SP = { I, pageHTML, thumbHTML, toolbar, sidebar, panelHeader, render, mini, pageBox, pill, wsToolbar, fileCard, pageCard, dropCard, inserter, wsStatus };
+
 })();

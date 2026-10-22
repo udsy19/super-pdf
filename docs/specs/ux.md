@@ -1,8 +1,8 @@
 # UX design
 
-Super PDF is Preview with one more button. This document is the contract for how the app looks and behaves: the
-window, the Tools sheet, the tool panels, drag and drop, the welcome window, the page organiser, copy, metrics, type,
-colour, motion, empty states and errors. The mockups in `../mockups/` render these screens; `features.md` says what
+Super PDF is Preview with one more button, and a cheerful face. This document is the contract for how the app looks and
+behaves: the window, the Tools sheet, the tool panels, drag and drop, the welcome window, the workspace (Combine and
+Rearrange), copy, metrics, type, colour, motion, empty states and errors. The mockups in `../mockups/` render these screens; `features.md` says what
 each tool does; `../ARCHITECTURE.md` says who builds it.
 
 Preview facts quoted here were read statically from `/System/Applications/Preview.app` (menus, toolbar property list,
@@ -16,7 +16,22 @@ tiles, each with a plain name and one line that says what it does. Choosing a ti
 with at most three choices and one big blue button. The document itself is the preview: a watermark appears on the
 page while you type it, pages shrink as you drag the "smaller" slider, black boxes appear as you choose what to hide.
 The original file is never overwritten without asking. Everything is undoable. Drag does the obvious thing: pages
-rearrange, dropped files combine, dragged-out pages become a new PDF.
+rearrange, dropped files combine, dragged-out pages become a new PDF. Several files dropped on the app open the
+workspace: a big, friendly card per file on a soft blue canvas, each name in its own pastel pill, files of any kind
+turning into PDFs on their cards while you arrange them, and one big **Finish** button.
+
+### 1.3 The look: cheerful, never noisy
+
+The app should feel effortless and happy to use, the way the best web PDF tools feel, while staying a fast, native Mac
+app (no web look-alikes, no ads, no upsells). Five things carry the cheer; everything else stays Preview-calm:
+
+| Ingredient | Where it shows |
+|---|---|
+| **One bright colour per Tools section** (§2.3) | Every tool's icon is a rounded square filled with its section's colour (lighter at the top) with a white symbol: tiles, section chips and headers in the sheet, the panel header (with a soft wash of the colour behind it), the welcome window's targets. |
+| **Pastel file pills** (§2.3, §6.2) | In the workspace and in Combine's list every file's name sits in its own pastel pill with deep ink of the same hue (sky, pink, mint, peach, lavender, lemon, aqua, coral), so files are told apart at a glance and never by colour alone. |
+| **A soft canvas** | The workspace sits on a light blue canvas with white rounded cards; the welcome window and the Tools sheet have a faint wash of the brand colours behind their titles. |
+| **Springy motion** (§2.5) | Tiles and cards grow a touch on a lively spring under the pointer; cards spring aside to make room for what you drag; the success check pops in with a short burst of confetti; long jobs show a light sweeping across their progress. Reduce Motion turns all of it into plain crossfades. |
+| **Warm, plain words** (§7) | "Drop in PDFs, photos or Office files — we’ll take it from there.", "Add PDF, image, Word, Excel, and PowerPoint files", "All set: 12 pages, in your order." Still sentence case, no jargon, no exclamation marks. |
 
 ### 1.1 The grandma test (rules that every screen passes)
 
@@ -31,7 +46,7 @@ rearrange, dropped files combine, dragged-out pages become a new PDF.
 | **Big targets** | Tiles are 150×116 pt, primary buttons 36 pt tall and full width, thumbnails at least 100 pt, drop zones the whole window. |
 | **Drag is a verb too** | Rearranging, combining, extracting, inserting and placing all work by drag, and the drop target lights up and says what will happen ("Add 3 pages here"). |
 | **Preview's words where Preview has them** | "Thumbnails", "Table of Contents", "Highlights and Notes", "Bookmarks", "Rotate Left", "Crop", "Markup", "Show Inspector", "Enter Password…", "Export As…", "Import from iPhone". |
-| **Apple's tone** | Sentence case, curly quotes around file names, a real ellipsis on anything that opens a dialog, no exclamation marks, no "Oops". |
+| **Apple's tone, warmly** | Friendly and encouraging ("we’ll take it from there", "All set"), sentence case, curly quotes around file names, a real ellipsis on anything that opens a dialog, no exclamation marks, no "Oops". |
 
 ### 1.2 How many clicks
 
@@ -40,7 +55,7 @@ rearrange, dropped files combine, dragged-out pages become a new PDF.
 | Any tool | 2: **Tools** → tile (the panel opens with sensible defaults) + 1 to confirm. Favourites pinned to the toolbar are 1 click. |
 | Rotate a page, delete a page | 0 clicks: select the thumbnail, press ⌘R / ⌫ (Preview's keys), or right-click → Rotate Right. |
 | Rearrange pages | drag |
-| Combine files | drop the files on the sidebar (or the Dock icon, or the welcome window) |
+| Combine files | drop the files on the welcome window or the Dock icon (the workspace opens, a card per file), or on the sidebar |
 | Extract pages | drag thumbnails to the Desktop |
 | Convert any file to PDF | drop it on the Dock icon or the window: it converts and opens |
 | Sign | Markup → Sign (Preview's flow), or Tools → Sign |
@@ -81,21 +96,21 @@ rearrange, dropped files combine, dragged-out pages become a new PDF.
 | Default window | 1100 × 760 pt, min 640 × 440 | Preview's nib frame is 1024 × 461 with a 213 × 135 minimum; we need room for the panel. |
 | Title/toolbar | Unified, 52 pt; traffic lights at (20, 18) | macOS 26 standard unified toolbar. |
 | Toolbar items (default set, left → right) | Sidebar/View popup (`sidebar.leading`) · tracking separator · Zoom segmented (−, 1, +; Preview's `zoom_and_actual`) · flexible · **Markup** (`pencil.tip.crop.circle`) · **Rotate** (`rotate.left`) · **Form Filling** (shows only when the document has fields, `rectangle.and.pencil.and.ellipsis`) · flexible · **Tools** · **Share** (`square.and.arrow.up`) · **Search** field (180 pt, placeholder "Search") | Preview's `CommonToolbar.proplist` default set, with Tools added and Inspector moved to the Tools sheet and the View menu. Customisable (View › Customize Toolbar…): every tool is available as a toolbar item, so favourites become one click. |
-| Tools button | Bordered-prominent (accent-filled) capsule, 28 pt tall, 16 pt side padding, label "Tools" with `square.grid.2x2` 13 pt symbol on the left; ⌘T; appears in the window title as the only coloured control | The one new thing must be findable in a second. |
+| Tools button | Bordered-prominent (accent-filled) capsule, 28 pt tall, 16 pt side padding, label "Tools" with `square.grid.2x2` 13 pt symbol on the left; ⌘T; the only coloured control in a document window's toolbar (the workspace's Finish is the other, in its own toolbar) | The one new thing must be findable in a second. |
 | Title | Document name centred, 13 pt semibold; "— Edited" suffix in secondary colour; proxy icon draggable | NSWindow standard. |
 | Sidebar | Default 197 pt (Preview's saved `PVPDFLastSidebarWidth`), min 140, max 360; thin divider | Preview. |
 | Sidebar thumbnails | Width = sidebar − 32 pt, aspect of the page, 8 pt radius, 1 pt border (`separatorColor`), 4 pt shadow; page number 11 pt below, centred; selected: 2 pt accent ring + accent 15% fill behind; 12 pt vertical gap | Preview's `PVFIIconView` scales to the sidebar width; page labels 11 pt. |
-| Sidebar modes | Thumbnails ⌥⌘2 · Table of Contents ⌥⌘3 · Highlights and Notes ⌥⌘4 · Bookmarks ⌥⌘5 · Attachments ⌥⌘6 (Preview's Contact Sheet becomes our page organiser, ⌥⌘6 → ⌥⌘7 keeps Contact Sheet) · Search results (appears while searching) · Signatures (appears when the file has signatures) | Preview's View menu, extended. |
+| Sidebar modes | Thumbnails ⌥⌘2 · Table of Contents ⌥⌘3 · Highlights and Notes ⌥⌘4 · Bookmarks ⌥⌘5 · Attachments ⌥⌘6 (Preview’s Contact Sheet becomes our workspace, ⌥⌘6 → ⌥⌘7 keeps Contact Sheet) · Search results (appears while searching) · Signatures (appears when the file has signatures) | Preview's View menu, extended. |
 | Sidebar bottom bar | 29 pt: "12 pages" 11 pt secondary left; `plus` button right → "Add pages" menu (From file…, Blank page, From scanner…, From iPhone…) | Preview's `SidebarPaneBottomView` is 29 pt. |
 | Document well | `underPageBackgroundColor`; page shadows on; page-break margins 4/4/4.75/4.75; continuous scroll default; book mode for two pages; scale 0.1–20 | Preview's `PDFContentView.nib` defaults. |
 | Tool panel | 320 pt wide (Preview's Inspector width), inline (pushes the document, never floats), min document width 360 pt → below 1000 pt window width the panel overlays as a sheet-like card; header 52 pt; content inset 20 pt; footer 76 pt | Inspector precedent; no floating palettes. |
 | Markup bar | 31 pt sub-toolbar under the toolbar, as Preview (`PVEditBanner` 1024 × 31) | Preview. |
-| Result banner | 44 pt, under the toolbar, full width, `controlBackgroundColor` with a 1 pt bottom separator; icon + 13 pt text + buttons right; auto-hides after 8 s, or stays while the pointer is inside | Preview uses 28–31 pt banners for "A newer version of this document is available"; ours needs buttons. |
-| Page organiser grid | Thumbs 160 pt wide default (slider 80–320; Preview's contact sheet default 120), 24 pt gap, 12 pt radius; hover reveals rotate ⟲ ⟳ and ✕ at the bottom; insertion line 3 pt accent | Google Photos "hold, then drag pages to rearrange" pattern. |
-| Tools sheet | 880 × 620 pt (clamped to window − 80 pt each way; min 640 × 480); corner 16 pt; search field 32 pt tall; tiles 150 × 116 pt in a 5-column grid with 16 pt gaps and 24 pt margins; section header 13 pt semibold uppercase-free, 32 pt tall | Fits five tiles; readable at arm's length. |
-| Tile | 150 × 116 pt, 12 pt radius, `controlBackgroundColor` with 1 pt `separatorColor` border; 40 pt circle in the category colour at 15% with a 20 pt symbol in the category colour; name 13 pt semibold; hint 11 pt secondary, 2 lines, truncated; hover: border → accent, lift 1 pt, 150 ms; keyboard focus ring | |
-| Primary button | Full panel width, 36 pt tall, 10 pt radius, accent fill, 13 pt semibold white; disabled at 40% | Bigger than AppKit's 22 pt default on purpose. |
-| Welcome window | 760 × 520 pt, non-resizable, centred; four 160 × 140 pt targets; recents list below | |
+| Result banner | 44 pt, under the toolbar, full width, `controlBackgroundColor` washed with 13 % of `success` from the left (fading out by 46 % of the width), 1 pt bottom separator; a 22 pt `success` check with a 4 pt halo + 13 pt text + buttons right; auto-hides after 8 s, or stays while the pointer is inside | Preview uses 28–31 pt banners for "A newer version of this document is available"; ours needs buttons. |
+| Workspace (§6.2) | Canvas `canvas`; file cards 184 × 242 pt (page area 160 × 168, 12 pt in), 16 pt radius, 36 pt apart across and 28 pt down, 28 pt from the top, centred; page cards 148 × 214 pt (page area 128 × 150, 10 pt in), 14 pt radius, 32 / 24 pt apart; pills 22 pt (12 pt semibold; 20 pt and 11 pt on page cards); checkbox 20 pt round at (10, 10); hover toolbar 26 pt buttons ×4 at the top right; "+" 24 pt round accent between neighbours; list rows 64 pt, at most 820 pt wide; status line 36 pt; pinch or ⌘+ / ⌘− scale cards 0.7–1.6 | Smallpdf-style cards, big enough to read a page at a glance; gaps sized for the "+". |
+| Tools sheet | 880 × 620 pt (clamped to window − 80 pt each way; min 640 × 480); corner 16 pt; search field 32 pt tall; section chips 28 pt tall, 6 pt apart, 12 pt under the search field; tiles 150 × 116 pt in a 5-column grid with 16 pt gaps and 24 pt margins; section header 13 pt semibold after its 20 pt icon square | Fits five tiles; readable at arm's length. |
+| Tile | 150 × 116 pt, 12 pt radius, `controlBackgroundColor` with 1 pt `separatorColor` border; 36 pt rounded square (10 pt radius) in the section's colour, 24 % lighter at the top, with an 18 pt semibold white symbol; name 13 pt semibold; hint 11 pt secondary, 2 lines, truncated; hover: 1.5 pt border and a soft shadow in the section's colour, lift 2 pt, grow to 1.03 on the hover spring; keyboard focus: 2 pt accent ring | |
+| Primary button | Full panel width, 36 pt tall, 10 pt radius, accent fill with a faint light along the top and a soft accent shadow, 13 pt semibold white; gives to 0.97 on a spring when pressed; disabled at 40% | Bigger than AppKit's 22 pt default on purpose. |
+| Welcome window | 760 × 520 pt, non-resizable, centred; four 160 × 140 pt targets with 40 pt icon squares; recents list below; the drop tip 18 pt above the bottom | |
 
 ### 2.2 Typography
 
@@ -114,7 +129,9 @@ System font (SF Pro) only, matching Preview, which uses `.AppleSystemUIFont` at 
 
 ### 2.3 Colour
 
-Semantic system colours only, so light and dark mode, accent colour choice and Increase Contrast all work for free.
+Chrome and text use semantic system colours, so light and dark mode, the accent colour choice and Increase Contrast
+work for free. On top of them sits a small, fixed **brand palette**: one colour per Tools section, the app's indigo, a
+success green, the workspace's canvas and cards, and eight pastel file pills, each with its own dark value.
 
 | Token | Light | Dark | Use |
 |---|---|---|---|
@@ -124,16 +141,51 @@ Semantic system colours only, so light and dark mode, accent colour choice and I
 | `controlBackgroundColor` | #FFFFFF | #1E1E1E / 2A2A2A | tiles, panel cards, banner |
 | `separatorColor` | #000 10% | #FFF 10% | borders, dividers |
 | `labelColor` / `secondaryLabelColor` / `tertiaryLabelColor` | #000 85% / 50% / 25% | #FFF 85% / 55% / 25% | text |
-| `controlAccentColor` (default blue) | #007AFF | #0A84FF | Tools button, primary buttons, selection rings, drop highlights, insertion line |
+| `controlAccentColor` (default blue) | #007AFF | #0A84FF | Tools button, primary buttons, Finish, selection rings, checkboxes, the "+" between cards, drop highlights, insertion line |
 | `systemRed` | #FF3B30 | #FF453A | Black out marks, destructive confirm buttons only |
-| Category colours (tiles) | blue #007AFF Pages · green #34C759 Convert · orange #FF9500 Edit · yellow #FFCC00 Mark up · purple #AF52DE Sign & fill · red #FF3B30 Protect · teal #30B0C7 Fix & check · brown #A2845E Scan | dark variants per Apple's system palette | tile icon circles, panel header icons, nothing else |
 | Highlight colours | Preview's: Yellow #FACD5A, Green #7CC868, Blue #69B0F1, Pink #FB5C89, Purple #C885DA (dark: #5E4613, #294714, #1F3466, #5E2D42, #422D61); notes fill #FFEB6B etc. | | markup, identical to Preview so files look the same in both apps |
+
+**Brand palette** (`SPColor`, mirrored in `../mockups/src/shared.css`):
+
+| Token | Light | Dark | Use |
+|---|---|---|---|
+| `categoryBlue` — Pages | #2F80ED | #4C8DF6 | the section's icons, chip, header and panel wash; Combine on the welcome window |
+| `categoryGreen` — Convert | #1FAF68 | #2DC27A | 〃; Convert a file on the welcome window |
+| `categoryOrange` — Edit | #FF8A1F | #FF9A3C | 〃 |
+| `categoryYellow` — Mark up | #F5B000 | #FFC21A | 〃 |
+| `categoryPurple` — Sign & fill | #8B5CF6 | #9D74FF | 〃 |
+| `categoryRed` — Protect | #EF4444 | #F65A5A | 〃; the delete buttons of the workspace's hover toolbar and preview |
+| `categoryTeal` — Fix & check | #0EB2C2 | #22C3D2 | 〃 |
+| `categoryPink` — Scan | #EC4899 | #F45FAA | 〃; Scan on the welcome window |
+| `brand` | #5B5BF6 | #7272FF | the app's mark (blue → indigo → violet → pink), Open a PDF, the welcome tip |
+| `success` | #22B35E | #30C46C | the result banner's check and wash |
+| `canvas` | #EDF3FE | #171B23 | the workspace's background |
+| `card` | #FFFFFF | #252B36 | the workspace's cards |
+
+**File pills** (fill / ink; the ink is also the file's strong colour). Files take them in turn; a document's own pages
+take the first. Ink on fill is at least 4.5 : 1 in both appearances (self-test).
+
+| Pill | Light fill / ink | Dark fill / ink |
+|---|---|---|
+| sky | #DCEBFF / #1F5FBF | #1E3A66 / #A9CBFF |
+| pink | #FFDDEB / #B4245F | #5A2440 / #FFB3D2 |
+| mint | #D3F5E3 / #127346 | #1C4A35 / #A6EBC7 |
+| peach | #FFE4CF / #A8500F | #5A3519 / #FFC9A1 |
+| lavender | #E9E0FF / #5B3CC4 | #3A2D66 / #CDBDFF |
+| lemon | #FFF2B8 / #7D5E00 | #4D4214 / #FFE58A |
+| aqua | #CFF4F6 / #0B6E78 | #164A50 / #9FE8EE |
+| coral | #FFE0DC / #B3322A | #5A2622 / #FFB8AF |
 
 Redaction marks: 1.5 pt `systemRed` outline with 10% fill before applying; solid black (or the chosen colour) after.
 
 ### 2.4 Iconography
 
-SF Symbols throughout, the same ones Preview and the menus use: `sidebar.leading`, `pencil.tip.crop.circle` (Markup),
+SF Symbols throughout. A tool's symbol sits white on a rounded square filled with its section's colour (`SPIcon`:
+24 % lighter at the top, a hairline edge, a soft shadow of the colour), at 36 pt in tiles, 40 pt on the welcome
+window, 24 pt in panel headers, 20 pt before section headers and 18 pt in the section chips. Sections have their own
+symbols: Pages `doc.on.doc.fill`, Convert `arrow.triangle.2.circlepath`, Edit `pencil`, Mark up `highlighter`, Sign &
+fill `signature`, Protect `lock.fill`, Fix & check `wrench.and.screwdriver.fill`, Scan `viewfinder`. The symbols are the
+same ones Preview and the menus use: `sidebar.leading`, `pencil.tip.crop.circle` (Markup),
 `rotate.left`, `crop`, `highlighter`, `book`, `list.bullet.indent`, `square.grid.2x2` (Tools), `square.and.arrow.up`,
 `doc.on.doc` (Combine), `arrow.down.right.and.arrow.up.left` (Make smaller), `text.viewfinder` (Recognise text),
 `text.redaction` (Black out), `lock` / `lock.open`, `signature`, `person.2.badge.key` (Request signatures),
@@ -146,26 +198,33 @@ SF Symbols throughout, the same ones Preview and the menus use: `sidebar.leading
 | Event | Animation |
 |---|---|
 | Tools sheet | System sheet slide (≈ 250 ms); tiles fade-up in 3 staggered rows of 40 ms; search field focused on open |
+| Hover (tiles, welcome targets, workspace cards) | Grow to 1.03 (cards 1.02) on the hover spring (response 0.32, damping 0.58): a little bounce; border and shadow take the section's colour over 150 ms |
 | Tool panel open/close | Width 0 → 320 with ease-out 220 ms; the document re-fits width during the animation; content fades in at 120 ms |
 | Switching tools | Crossfade content 150 ms; header title slides 8 pt |
 | Thumbnail drag | Picked-up thumb scales 1.05 with 8 pt shadow; others shift with a spring (response 0.3, damping 0.8); insertion line fades in 100 ms |
+| Workspace drag | The dragged cards leave their places (the others close up) and the cards after the pointer spring aside (response 0.3, damping 0.8) to open a dashed hole where they will land; after a change every card slides to its new place on the same spring, new cards pop in from 0.86, removed ones fade in 150 ms |
+| Preview (workspace) | Fades in over the canvas in 180 ms, out in 150 ms |
 | Drop target | 2 pt accent ring + 8% accent tint over the target, 120 ms; the label "Add here" appears after 300 ms hover |
-| Result banner | Slides down 44 pt under the toolbar, 300 ms ease-out; progress bar inside for long jobs; hides up after 8 s or on click |
+| Result banner | Slides down 44 pt under the toolbar, 300 ms ease-out; the check pops in from 0.2 on the pop spring (response 0.42, damping 0.5) and a short burst of confetti in the section colours falls from it for 1.4 s; hides up after 8 s or on click |
+| Progress (panel button) | The filled part grows on a spring; a soft band of light sweeps across it every 1.6 s |
 | Live preview edits (watermark, numbers, headers) | Re-render debounced 80 ms; no animation, the page just updates |
 | Page rotate | 90° rotate of the thumbnail and page 250 ms |
-| Reduce Motion on | Crossfades only, no movement |
+| Reduce Motion on | Crossfades only, no movement: no hover growth, no spring, no confetti, no pop |
 
 ## 3. Drag and drop everywhere
 
 | Drag | Onto | Result | Target feedback |
 |---|---|---|---|
-| Files (PDF, images, Office, anything convertible) | Dock icon or the welcome window | One file opens; several files → "Combine these 3 files?" sheet with the queue (§6.2) | Dock bounce; welcome window target highlights |
+| Files (PDF, images, Office, anything convertible) | Welcome window | One file opens; several open the workspace with a card per file (§6.2), the ones that aren't PDFs converting on their cards | A dashed card over the window with a bobbing arrow: "Drop to open" / "Drop to combine 3 files" |
+| Files | Dock icon | One file opens; several ask "Combine these 3 files?" — Combine… opens the workspace, Open Separately opens each | Dock bounce |
 | Files | Document window (page area) | Opens in a new tab/window (PDF) or converts then opens | Window-wide accent ring, label "Open" |
 | Files | Sidebar between two thumbnails | Inserts the file's pages at that position (converting first if needed) | Insertion line + "Add 3 pages here" |
 | Files | Sidebar end | Appends | Insertion line at end |
-| Thumbnails | Within sidebar / organiser | Reorder (multi-select supported) | Insertion line |
+| Thumbnails | Within the sidebar | Reorder (multi-select supported) | Insertion line |
+| Cards (files or pages) | Within the workspace | Reorder (multi-select supported) | The cards spring aside to open a dashed hole |
+| Files | Anywhere in the workspace | Each file's pages go into the gap under the pointer, as its own card while it converts | The hole opens, with "Add 3 pages here" |
 | Thumbnails | Another document's sidebar | Copies pages there (⌥ moves) | Insertion line in that window |
-| Thumbnails | Finder / Desktop / Mail | A new PDF "Report – pages 3-5.pdf" (file promise) | Standard drag image: stacked pages with a count badge |
+| Thumbnails or workspace cards | Finder / Desktop / Mail | A new PDF "Report – pages 3-5.pdf" (file promise) | Standard drag image: stacked pages (or cards) with a count badge |
 | Image file | A page (in Edit or Markup mode) | Edit mode: placed as a page object; Markup: placed as an image stamp | Cursor badge shows "+" and a label "Place image" |
 | Text | A page | New text box | Label "Add text" |
 | Files | Tools sheet tile (e.g. "Combine files", "Images → PDF", "To Word") | Runs that tool on the dropped files | Tile highlights |
@@ -177,39 +236,39 @@ encrypted document asks for the password first; dropping never overwrites a file
 
 ## 4. The Tools sheet
 
+Mockup: `tools-sheet.png` (and `-dark`).
+
 ```
 ┌───────────────────────────────────────────────────────────────────────────────────────────┐
-│                                                                                       ✕   │
+│  (soft wash of blue and pink behind the title)                                        ✕   │
 │   What do you want to do?                                                                 │
 │   ┌──────────────────────────────────────────────────────────────────────────────────┐    │
 │   │ 🔍  Search tools — try "smaller", "sign", "Word", "black out"                      │    │
 │   └──────────────────────────────────────────────────────────────────────────────────┘    │
+│   (■ Pages) (■ Convert) (■ Edit) (■ Mark up) (■ Sign & fill) (■ Protect) (■ Fix & check) (■ Scan)
 │                                                                                           │
 │   Recently used                                                                           │
 │   ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐                        │
-│   │ ◯ Make   │ │ ◯ Sign   │ │ ◯ Combine│ │ ◯ To Word│ │ ◯ Black  │                        │
+│   │ ■ Make   │ │ ■ Sign   │ │ ■ Combine│ │ ■ To Word│ │ ■ Black  │                        │
 │   │  smaller │ │          │ │  files   │ │          │ │  out     │                        │
 │   └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘                        │
 │                                                                                           │
-│   Pages                                                                                   │
+│   ■ Pages                                                                                 │
 │   ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐                        │
-│   │ ◯ Combine│ │ ◯ Rear-  │ │ ◯ Split  │ │ ◯ Extract│ │ ◯ Rotate │                        │
+│   │ ■ Combine│ │ ■ Rear-  │ │ ■ Split  │ │ ■ Extract│ │ ■ Rotate │                        │
 │   │  files   │ │  range   │ │          │ │  pages   │ │  pages   │                        │
 │   │ Put files│ │ Drag pa- │ │ Make se- │ │ Save some│ │ Turn     │                        │
 │   │ together │ │ ges in   │ │ veral    │ │ pages as │ │ pages    │                        │
 │   └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘                        │
-│   ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐                        │
-│   │ ◯ Delete │ │ ◯ Crop   │ │ ◯ Insert │ │ ◯ Number │ │ ◯ Booklet│                        │
-│   │  pages   │ │          │ │  pages   │ │  pages   │ │          │                        │
-│   └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘                        │
-│                                                                                           │
-│   Convert                                                                                 │
-│   ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐                        │
-│   │ ◯ To Word│ │ ◯ To Exc.│ │ ◯ To Pow.│ │ ◯ To ima-│ │ ◯ Any    │   … (scrolls)          │
-│   └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘                        │
+│   … (scrolls: Convert, Edit, Mark up, Sign & fill, Protect, Fix & check, Scan)            │
 └───────────────────────────────────────────────────────────────────────────────────────────┘
+   ■ = the section's colour, a rounded square with a white symbol (§2.4)
 ```
 
+- **Section chips** under the search field: each section's icon and name in a white capsule; a click (or ⌘1–8) jumps
+  to the section; hover tints the chip with its colour. They show the whole palette at once, so the sheet reads as a
+  colourful map of everything the app does.
+- **Section headers** carry the same 20 pt icon square before the name; Recently used has none.
 - Opens with **Tools** (toolbar), **⌘T**, the Tools menu item "All Tools…", or the Dock menu. Esc closes. It is a window
   sheet, so the document stays visible behind it.
 - The search field has focus on open. Typing filters tiles live across all sections and matches names, hints and the
@@ -293,7 +352,7 @@ encrypted document asks for the password first; dropping never overwrites a file
 
 ```
 ┌──────────────────────────────────┐
-│ ‹   ◯ Watermark              ✕   │  52 pt header: back (to Tools sheet), category icon, 15 pt title, close
+│ ‹   ■ Watermark              ✕   │  52 pt header: back (to Tools sheet), section icon square, 15 pt title, close
 │ Stamp "Draft" or a logo across   │  11 pt hint, secondary
 │ every page.                      │
 ├──────────────────────────────────┤
@@ -319,7 +378,9 @@ encrypted document asks for the password first; dropping never overwrites a file
 └──────────────────────────────────┘
 ```
 
-- **Header**: back arrow returns to the Tools sheet with the search text preserved; ✕ closes the panel (Esc too).
+- **Header**: back arrow returns to the Tools sheet with the search text preserved; ✕ closes the panel (Esc too). A
+  soft wash of the section's colour (12 % fading to nothing over 64 pt) sits behind the header, so every panel wears
+  its section's colour.
 - **Scope line** (when the tool works on pages): "Pages: All · This page · 3–5 · Selected (4)" as a popup directly
   under the hint. Selecting thumbnails in the sidebar while a panel is open switches the scope to "Selected".
 - **Controls**: at most three visible; sliders have a live value; popups have at most seven items; checkboxes have
@@ -332,8 +393,8 @@ encrypted document asks for the password first; dropping never overwrites a file
 - **Footer**: one primary button with a verb. For tools that write a new file the button says "Save as …" / "Make
   smaller" and the output location line sits above it: "Saves "Report (smaller).pdf" next to the original · Change…".
   Secondary action is a text button (Cancel, or "Remove existing watermark" in red when relevant).
-- **Progress**: the button becomes a progress bar with "Page 14 of 120 · Stop"; the panel stays open; the sidebar
-  thumbnails tick as pages complete.
+- **Progress**: the button becomes a progress bar with "Page 14 of 120 · Stop"; the fill grows on a spring and a soft
+  light sweeps across it so a long job looks alive; the panel stays open; the sidebar thumbnails tick as pages complete.
 - **Result**: the panel closes and the result banner appears (§7.3). For new files the new document opens in a new
   tab (⌘-click the banner to reveal in Finder).
 - **Errors** appear inside the panel above the footer as a 13 pt message with an icon and one action (§7.4).
@@ -345,7 +406,7 @@ encrypted document asks for the password first; dropping never overwrites a file
 | **A. One-choice** | Rotate, Delete, Extract, Lock in notes, Remove password, Repair, Fast web view, Read aloud | Scope + one control (or none) + button. Many of these are better reached from the thumbnail context menu; the panel exists so the tile works. |
 | **B. Preset + more** | Make smaller, For archiving, To images, Split, Booklet, Resize | Three radio presets with a consequence line each ("Email · 1.7 MB"), More options for the full set. |
 | **C. Live-preview editor** | Watermark, Headers & footers, Number pages, Bates, Background, Crop, Stamps, Links | Controls on the left panel, effect drawn on the page immediately, drag handles on the page where position matters. |
-| **D. Mode** | Edit text & images, Draw & shapes, Highlight & notes, Fill a form, Make a form, Measure, Black out (marking), Sign (placing), Rearrange (organiser), Compare | The panel is a thin palette (tool buttons + properties) and the document becomes interactive; the footer button is "Done". |
+| **D. Mode** | Edit text & images, Draw & shapes, Highlight & notes, Fill a form, Make a form, Measure, Black out (marking), Sign (placing), Rearrange (the workspace), Compare | The panel is a thin palette (tool buttons + properties) and the document becomes interactive; the footer button is "Done". |
 | **E. Convert** | To Word/Excel/PowerPoint/text, Any file → PDF, Images → PDF, Combine | Input list (drop zone when the tool accepts files), output format/location, one line that names the engine, button "Save as Word…" (opens a save panel defaulting next to the original). |
 | **G. Flow** | Request signatures, Scan, Certificates | Up to three numbered steps in the same panel (a segmented "1 Who · 2 Where · 3 Send" at the top), back/next in the footer. |
 
@@ -385,10 +446,10 @@ page to make room, replace existing, date format, start number. Button **Add to 
 "A-1"); Start at **1**; Pages (with "Skip first" stepper). Button **Add numbers**. Also "Page labels" link under More
 options (what the sidebar shows).
 
-**Combine files** (E) — the queue (list with thumbnails, name, pages, "Pages: all ▾", drag to reorder, ✕); "Add
-files…" button and a drop zone; option "Add a contents entry for each file" **on**; File size popup **Normal**. Button
-**Combine 3 files**. Output: new unsaved document "Combined.pdf" (Save asks where). Also the organiser view for
-mixing pages (§6.2).
+**Combine files** (E) — the queue (list with icon, the name in its file pill, "Pages: all ▾", ✕); "Add files…" button
+and a drop zone; option "Add a contents entry for each file" **on**; File size popup **Normal**. Button **Combine 3
+files**. Output: new unsaved document "Combined.pdf" (Save asks where). The workspace (§6.2) is the bigger way to do
+the same: dropping several files on the app or the welcome window opens it.
 
 **Split** (B) — radio: **Every N pages** (stepper 1), By size (MB stepper), By contents entries, Blank pages between
 documents, Ranges (text field "1-3, 4-9"); output folder line; naming "Report – part 1.pdf". Button **Split into 4
@@ -507,74 +568,109 @@ controls named in `features.md`.
 
 ### 6.1 Welcome window
 
-Shown when the app opens with no document (and via Window › Welcome). Non-resizable 760 × 520.
+Shown when the app opens with no document (and via Window › Welcome). Non-resizable 760 × 520. Mockup: `welcome.png`
+(and `-dark`).
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────┐
-│ ● ● ●                                                                      │
-│                                                                            │
+│ ● ● ●     (soft pools of blue, indigo and pink along the top)              │
+│                                  ┌────┐                                    │
+│                                  │ 📄 │  the mark: blue → indigo → violet → pink
+│                                  └────┘                                    │
 │                              Super PDF                                     │
-│              Open a PDF, or drop any file here to turn it into one.        │
+│      Drop in PDFs, photos or Office files — we’ll take it from there.      │
 │                                                                            │
 │   ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐   │
-│   │              │  │              │  │              │  │              │   │
-│   │   ▢ Open     │  │  ▢▢ Combine  │  │  ▣ Scan      │  │  ⇄ Convert   │   │
-│   │   a PDF      │  │  files       │  │              │  │  a file      │   │
-│   │              │  │  Make one    │  │  iPhone or   │  │  Word, photos│   │
-│   │  ⌘O          │  │  PDF from    │  │  a scanner   │  │  and more    │   │
-│   │              │  │  several     │  │              │  │  → PDF       │   │
+│   │ ■        ⌘O  │  │ ■            │  │ ■            │  │ ■            │   │
+│   │ Open a PDF   │  │ Combine files│  │ Scan         │  │ Convert a    │   │
+│   │ Or drop one  │  │ Put PDFs,    │  │ With your    │  │ file         │   │
+│   │ anywhere in  │  │ photos and   │  │ iPhone or a  │  │ Word, Excel, │   │
+│   │ this window  │  │ documents    │  │ scanner      │  │ photos and   │   │
+│   │              │  │ together     │  │              │  │ more → PDF   │   │
 │   └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘   │
-│                                                                            │
+│     indigo            blue (Pages)      pink (Scan)       green (Convert)   │
 │   Recent                                                                   │
 │   ┌─┐ Lease agreement.pdf           Yesterday, 4:12 PM     12 pages  2.1 MB│
 │   ┌─┐ Tax return 2025.pdf           Monday                 44 pages  8.0 MB│
 │   ┌─┐ Grandma's recipes.pdf         12 Sep                  6 pages  310 KB│
-│                                                                            │
+│        ⤓ Drop one file to open it, or several to put them together.        │
 └────────────────────────────────────────────────────────────────────────────┘
 ```
 
-Targets are 160 × 140, 14 pt radius, icon 36 pt in the category colour, label 15 semibold, hint 11 secondary. Dropping
-files anywhere in the window acts like "Combine files" (one file: open/convert). Recent rows: 36 pt, thumbnail 24 pt,
-name 13, metadata 11 secondary; right-click → Show in Finder / Remove from list.
+Targets are 160 × 140, 14 pt radius, a 40 pt icon square (11 pt radius) in the target's colour with a white symbol,
+label 15 semibold, hint 11 secondary; hover borders the card in its colour, gives it a coloured shadow and grows it on
+the hover spring. Dropping files anywhere: one opens (converted first when it isn't a PDF), several open the workspace
+(§6.2). While files are over the window a dashed card covers it with an accent circle and a bobbing arrow: "Drop to
+open", "Drop to combine 3 files", or the reason a drop can't work. When none of the dropped files is a PDF, the first
+one converts before the workspace opens and the card says "Getting your files ready…" with a spinner. Recent rows: 36
+pt, thumbnail 24 pt, name 13, metadata 11 secondary, hover tints the row with the accent; right-click → Show in Finder /
+Remove from list.
 
 Empty recents: the list area shows "Files you open will show up here." in `tertiaryLabelColor`.
 
-### 6.2 Page organiser (Rearrange, Combine)
+### 6.2 The workspace (Combine, Rearrange)
 
-Full-window mode, like Preview's Contact Sheet, entered from the Rearrange tile, View › Page Organiser (⌥⌘6), the
-sidebar's "⤢" button, or by dropping a second file on a document.
+Full-window mode on the soft blue canvas, entered by dropping several files on the welcome window or the app (Combine),
+from the welcome window's Combine files, from the Rearrange tile, View › Page Organiser (⌥⌘6) or the sidebar's
+"⤢". Mockups: `workspace.png` (Files, and `-dark`), `workspace-pages.png` (Pages, a drag in progress),
+`workspace-preview.png` (the preview).
 
 ```
-┌──────────────────────────────────────────────────────────────────────────────────────────┐
-│ ● ● ●   Rearrange pages — Report.pdf            [Select all]  [⟲] [⟳] [🗑]  (size ────●──)  Done │
-├──────────────────────────────────────────────────────────────────────────────────────────┤
-│                                                                                          │
-│   ┌─────────┐    ┌─────────┐    ┌─────────┐  ┃ ┌─────────┐    ┌─────────┐    ┌ ─ ─ ─ ─ ┐  │
-│   │ ░░░░░░░ │    │ ░░░░░░░ │    │ ▓▓▓▓▓▓▓ │  ┃ │ ░░░░░░░ │    │ ░░░░░░░ │    │   +     │  │
-│   │ ░░░░░░░ │    │ ░░░░░░░ │    │ ▓▓▓▓▓▓▓ │  ┃ │ ░░░░░░░ │    │ ░░░░░░░ │    │ Add     │  │
-│   │ ░░░░░░░ │    │ ░░░░░░░ │    │ ▓▓▓▓▓▓▓ │  ┃ │ ░░░░░░░ │    │ ░░░░░░░ │    │ pages   │  │
-│   └─────────┘    └─────────┘    └─────────┘  ┃ └─────────┘    └─────────┘    └ ─ ─ ─ ─ ┘  │
-│       1              2              3        ┃     4              5                       │
-│                                 ⟲  ⟳  ✕      ┃ ← insertion line while dragging            │
-│                                                                                          │
-│   ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐                 │
-│   │ ░░░░░░░ │    │ ░░░░░░░ │    │ ░░░░░░░ │    │ ░░░░░░░ │    │ ░░░░░░░ │                 │
-│   └─────────┘    └─────────┘    └─────────┘    └─────────┘    └─────────┘                 │
-│       6              7              8              9             10                       │
-│                                                                                          │
-├──────────────────────────────────────────────────────────────────────────────────────────┤
-│  12 pages · 3 selected         Drag pages to rearrange. Drop files here to add them.      │
-└──────────────────────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────────────────────┐
+│ ● ● ●  [▤▾] │ [📄 Files | ▦ Pages]  Combined           [+▾] [⟲] [⟳] [🗑] │ [◎] [⇅▾] [▦|☰]  (Finish) │
+│              4 files · 17 pages                                                                │
+├──────────────────────────────────────────────────────────────────────────────────────────────┤
+│   ┌──────────────┐     ┌──────────────┐     ┌──────────────┐     ┌──────────────┐              │
+│   │◉ ┌────────┐  │     │○  [🔍⟳⧉🗑]   │     │○ ┌────────┐  │     │○ ┌────────┐  │              │
+│   │  │▤▤▤▤▤▤▤▤│▏ │ (+) │  ┌─────────┐ │ (+) │  │   ⟳    │  │ (+) │  │▤▤▤▤▤▤▤▤│▏ │              │
+│   │  │▤▤▤▤▤▤▤▤│▏ │     │  │ picture │ │     │  │ ▬▬▬▬── │  │     │  │▤▤▤▤▤▤▤▤│▏ │              │
+│   │  └────────┘  │     │  └─────────┘ │     │  └────────┘  │     │  └────────┘  │              │
+│   │(Lease agr…pdf)│    │(Floor plan.png)│   │(Budget 2026.xlsx)│ │(Schedule.pdf)│              │
+│   │   12 pages   │     │    1 page    │     │Converting… 62%│    │   3 pages    │              │
+│   └──────────────┘     └──────────────┘     └──────────────┘     └──────────────┘              │
+│   ┌ ─ ─ ─ ─ ─ ─ ┐                                                                              │
+│   │     (+)      │   Add PDF, image, Word, Excel, and PowerPoint files · or drop them anywhere  │
+│   │ PDF JPG DOC… │                                                                              │
+│   └ ─ ─ ─ ─ ─ ─ ┘                                                                              │
+├──────────────────────────────────────────────────────────────────────────────────────────────┤
+│  4 files · 17 pages · 1 selected                  Drag to reorder · Space to preview · Drop more files anywhere │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-- Thumbs 160 pt (slider), page numbers below, pages from a second file keep a coloured 3 pt bar in that file's colour
-  until saved (so you can see what came from where); hover shows ⟲ ⟳ ✕ under the thumb; multi-select with ⌘/⇧ and
-  rubber-band; drag to reorder with a 3 pt accent insertion line; drag out to Finder extracts; ⌫ deletes (undoable);
-  ⌘R/⌘L rotate; the "+ Add pages" tile at the end opens the add menu and is also a drop target.
-- Bottom status line explains the two gestures permanently (11 pt secondary).
-- Done returns to the document; nothing is written until Save. Esc also returns (changes kept, undo stack intact).
-- Combine from the welcome window opens the same screen with a left column listing the files (name, page count,
-  colour) and the grid showing all pages in order; files can be reordered in the column, pages in the grid.
+- **Files | Pages** (the toolbar's first control, a picture and a word each). Files shows one card per file: its page
+  stack (sheets fanned behind when it has more than one page), the file's name in its pastel pill, "12 pages". Pages
+  shows one card per page, each with its file's pill (truncated in the middle) and "Page 3". The workspace opens on
+  Files when it holds several files, on Pages for one document. A file is where its pages came from until the next
+  save; a document's own pages are a file named after it.
+- **Cards** are white, rounded, softly shadowed. A round checkbox at the top left selects (click the card to select it
+  alone, ⌘ and ⇧ add, ⌘A or Select All takes everything); selected cards get a 2.5 pt accent ring. Hovering grows the
+  card a touch and shows a small white toolbar at its top right: **Preview** (🔍), **Rotate** (⟳), **Duplicate** (⧉: in
+  Files the copy is a file of its own in the next colour; in Pages it stays in its file), **Delete** (🗑, red). Each has
+  a tooltip, and each is also the card's accessibility action.
+- **The round "+"** sits between neighbouring cards in Files (and appears in the gap under the pointer in Pages): it
+  opens the add menu for that spot (From file… — any format, converted —, Blank page, From scanner…, From iPhone…).
+- **The add card** ends the grid: dashed accent border, a big "+", "Add PDF, image, Word, Excel, and PowerPoint files",
+  "or drop them anywhere" and the formats as coloured badges. A click chooses files; a drop adds them.
+- **Converting**: a file that isn't a PDF waits as its own card where it will go, with a spinner, a progress bar and
+  "Converting… 62%" (or "Converting to PDF…" while the converter can't tell), then becomes a real card; each file is
+  one undo step. Files dropped anywhere on the canvas go into the gap under the pointer.
+- **Drag to rearrange**: the dragged cards leave their places and the others spring aside to open a dashed hole where
+  they will land; release and they settle there, every card sliding to its new place. Dragging cards out to Finder makes
+  a PDF of their pages; dragging them to another window copies them (⌥ moves).
+- **Toolbar**: View ▾ · Files | Pages · the window's title with "4 files · 17 pages" · **Add ▾** · Rotate Left · Rotate
+  Right · Delete (the selection) · Select All · **Sort ▾** (Name (A to Z), Name (Z to A), Reverse Order: whole files
+  move, one undo step) · Grid | List · **Finish** (prominent). List shows 64 pt rows: checkbox, a small page, the pill,
+  the count, the toolbar at the right when hovered.
+- **Preview** (🔍, double-click, Space or Return): the page large on the frosted canvas, the file's pill at the top left,
+  ✕ at the top right, and a floating bar with ‹ 5 / 12 ›, Rotate Left, Rotate Right and Delete. From a file card it
+  turns that file's pages; from a page card, every page. ← → turn, ⌘L ⌘R rotate the page shown, ⌫ deletes it, Esc,
+  Space or a click outside the page closes it.
+- **Keys**: arrows move the selection (⇧ extends), ⌫ deletes, ⌘L ⌘R rotate, ⌘A selects all, Space previews, ⌘+ / ⌘− (or
+  pinch) resize the cards, Esc closes the preview, then goes back to the document.
+- **Finish** goes back to the document and shows the banner: "Combined 4 files into 17 pages." with Save… for a
+  combine, "All set: 12 pages, in your order." with Save… after rearranging. Nothing is written until Save; Esc goes
+  back without the banner (changes kept, undo stack intact).
+- The status line always counts files, pages and the selection and says what the gestures do (11 pt secondary).
 
 ### 6.3 Sidebar modes
 
@@ -635,7 +731,8 @@ the panel and changeable with "Change…".
 | Make smaller | Done. The file is 72% smaller (6.1 MB → 1.7 MB). · Show in Finder · Share · Undo |
 | Recognise text | Recognised 14 pages. You can now search and copy the text. · Undo |
 | Black out | Blacked out 12 items on 5 pages and saved "Report (blacked out).pdf". · Show in Finder |
-| Combine | Combined 3 files into 41 pages. · Save… |
+| Combine (the panel, the workspace's Finish) | Combined 3 files into 41 pages. · Save… |
+| Rearrange (the workspace's Finish) | All set: 12 pages, in your order. · Save… |
 | Convert to Word | Saved "Report.docx". · Open in Word · Show in Finder |
 | To images | Saved 12 images in "Report images". · Show in Finder |
 | PDF/A | Saved "Report (archive).pdf". It passes the PDF/A-2b check. |
@@ -644,6 +741,8 @@ the panel and changeable with "Change…".
 | Request signatures | Sent to 2 people. We'll match their files when they come back. · Show requests |
 | Split | Saved 4 files in "Report parts". · Show in Finder |
 | Rotate/Delete (in place) | no banner; the sidebar shows it and ⌘Z works |
+
+Every banner opens with its green check popping in and a short burst of confetti (none with Reduce Motion).
 
 ### 7.4 Error copy
 
@@ -701,10 +800,13 @@ copy.
 ## 9. Accessibility of the app
 
 Every tile, control and thumbnail has a VoiceOver label and hint (the tile hint is the accessibility hint); the Tools
-sheet is a grid with headings; panels have a default button and Esc; Increase Contrast adds 1 pt borders to tiles and
+sheet is a grid with headings, and its section chips are buttons; workspace cards are checkboxes named "Lease
+agreement.pdf, 12 pages" whose hover toolbar (Preview, Rotate, Duplicate, Delete) is also their accessibility actions,
+the "+" between cards is a button "Add files here", and the preview's bar is a toolbar; panels have a default button
+and Esc; Increase Contrast adds 1 pt borders to tiles and
 buttons; Reduce Motion disables movement; text sizes follow the system's text-size preference (Settings › General ›
 Text size in the app: Default / Larger / Largest scales 13 → 15 → 17 everywhere); colour is never the only signal
-(file colour bars in the organiser also show the file's name on hover; redaction marks have an icon).
+(a file's pill carries its name; redaction marks have an icon); pill ink on its fill is at least 4.5 : 1.
 
 ## 10. Decisions and alternatives
 
@@ -715,6 +817,10 @@ Text size in the app: Default / Larger / Largest scales 13 → 15 → 17 everywh
 | Document is the preview | A preview thumbnail inside the panel | A thumbnail is too small to judge a watermark or a crop. The real page at real size is the best preview. |
 | New file by default for file-level tools | Overwrite with undo | Undo can't be trusted across a crash or after closing; a sibling file is what people expect ("where's my original?" never happens). |
 | Plain names with jargon as synonyms | Acrobat's names | The brief's grandma test; experts still find tools by typing the old name. |
-| Page organiser as a full-window mode | Only the sidebar | Dragging in a 197 pt column is cramped for big reorders and for mixing files; Preview already has a Contact Sheet mode. |
+| The workspace as a full-window mode | Only the sidebar | Dragging in a 197 pt column is cramped for big reorders and for mixing files; Preview already has a Contact Sheet mode. |
+| A brand palette on top of the system colours | System colours only | The system colours are calm but grey-feeling next to the web tools people know; one fixed, tested colour per section makes the app recognisable and easy to scan, while chrome, text and the accent still follow the system. |
+| Files and Pages views of the same document in the workspace | A separate combine queue window | One model (the document's pages and where each came from) means every gesture, undo and Save work the same in both views; nothing is copied until Finish. |
+| Cards laid out by hand, springing aside while dragging | `NSCollectionView` with a gap indicator | A collection view can't move its items out of the way while a drag is over it; hand layout keeps only the cards on screen alive, so 500 pages stay light. |
+| Combine opens the workspace | Opening the Combine panel | Seeing every file as a big card, converting in place, is the easiest way to get the order right; the panel stays for the Tools sheet and Finder's Quick Action. |
 | Request signatures as a file exchange | Hosted links | No server, by constraint; email/Messages/AirDrop are what the audience uses anyway. |
 | Preview's exact menu and shortcut set | Our own structure | Zero relearning for Preview users; muscle memory keeps working. |

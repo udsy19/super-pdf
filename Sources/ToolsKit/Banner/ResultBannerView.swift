@@ -15,9 +15,9 @@ enum ToolsKitSystem {
     }
 }
 
-/// The result banner (ux §7.3, mockup main-window-result): 44 pt under the toolbar, a green check, one sentence with
-/// its numbers in semibold, and up to three small buttons on the right. It hides after 8 s unless the pointer is
-/// inside, or when clicked; ⌘-click reveals the file in Finder.
+/// The result banner (ux §7.3, mockup main-window-result): 44 pt under the toolbar on a soft green wash, a green check
+/// that pops in with a little confetti, one sentence with its numbers in semibold, and up to three small buttons on the
+/// right. It hides after 8 s unless the pointer is inside, or when clicked; ⌘-click reveals the file in Finder.
 @MainActor
 final class ResultBannerView: NSView {
     let banner: ResultBanner
@@ -43,6 +43,7 @@ final class ResultBannerView: NSView {
         icon.wantsLayer = true
         icon.layer?.cornerRadius = 11
         addSubview(icon)
+        wantsLayer = true
         check.image = symbol("checkmark", size: 11, weight: .heavy)
         check.contentTintColor = .white
         icon.addSubview(check)
@@ -65,6 +66,18 @@ final class ResultBannerView: NSView {
         setAccessibilityRole(.group)
         setAccessibilityLabel(banner.text)
         restyle()
+    }
+
+    /// The control background with the success colour washing in from the left (mockup `.banner`).
+    override func draw(_ dirtyRect: NSRect) {
+        let control = Style.control, green = SPColor.success.color
+        control.setFill()
+        bounds.fill()
+        let start = control.blended(withFraction: 0.13, of: green) ?? control
+        NSGradient(starting: start, ending: control)?.draw(in: NSRect(x: 0, y: 0, width: bounds.width * 0.46, height: bounds.height), angle: 0)
+        // A soft halo round the check.
+        green.withAlphaComponent(0.18).setFill()
+        NSBezierPath(ovalIn: icon.frame.insetBy(dx: -4, dy: -4)).fill()
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
@@ -93,9 +106,21 @@ final class ResultBannerView: NSView {
 
     private func restyle() {
         effectiveAppearance.performAsCurrentDrawingAppearance {
-            layer?.backgroundColor = Style.control.cgColor
-            icon.layer?.backgroundColor = SPColor.categoryGreen.color.cgColor
+            icon.layer?.backgroundColor = SPColor.success.color.cgColor
         }
+        needsDisplay = true
+    }
+
+    /// The check pops in on a spring and a handful of confetti falls from it (ux §2.5); Reduce Motion skips both.
+    private func celebrate() {
+        guard !Style.reduceMotion, let layer = icon.layer else { return }
+        let size = icon.bounds.size
+        var small = CATransform3DMakeTranslation(size.width / 2, size.height / 2, 0)
+        small = CATransform3DScale(small, 0.2, 0.2, 1)
+        small = CATransform3DTranslate(small, -size.width / 2, -size.height / 2, 0)
+        layer.add(SPMotion.pop.animation("transform", from: NSValue(caTransform3D: small), to: NSValue(caTransform3D: CATransform3DIdentity)),
+                  forKey: "pop")
+        Confetti.burst(from: icon)
     }
 
     // MARK: Hiding
@@ -104,6 +129,7 @@ final class ResultBannerView: NSView {
         super.viewDidMoveToWindow()
         timer?.invalidate()
         guard window != nil else { return }
+        DispatchQueue.main.async { [weak self] in MainActor.assumeIsolated { self?.celebrate() } }
         timer = Timer.scheduledTimer(withTimeInterval: SPMetrics.Banner.autoHideDelay, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated { self?.expire() }
         }

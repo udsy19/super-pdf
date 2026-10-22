@@ -1,4 +1,5 @@
 import Foundation
+import QuartzCore
 
 // Motion (ux §2.5). Durations in seconds. With Reduce Motion on, only crossfades remain (no movement).
 
@@ -8,6 +9,18 @@ public struct SPSpring: Hashable, Sendable {
     public var dampingFraction: Double
 
     public init(response: Double, dampingFraction: Double) { self.response = response; self.dampingFraction = dampingFraction }
+
+    /// The same spring for Core Animation (unit mass): stiffness (2π / response)², damping 4π · fraction / response.
+    public func animation(_ keyPath: String, from: Any?, to: Any?) -> CASpringAnimation {
+        let spring = CASpringAnimation(keyPath: keyPath)
+        spring.mass = 1
+        spring.stiffness = pow(2 * .pi / response, 2)
+        spring.damping = 4 * .pi * dampingFraction / response
+        spring.fromValue = from
+        spring.toValue = to
+        spring.duration = spring.settlingDuration
+        return spring
+    }
 }
 
 public enum SPMotion {
@@ -22,9 +35,14 @@ public enum SPMotion {
     /// Switching tools: crossfade, the header title slides 8 pt.
     public static let toolSwitch: TimeInterval = 0.15
     public static let toolSwitchTitleSlide: CGFloat = 8
-    /// Tile hover: border to accent and a 1 pt lift.
+    /// Tile hover: the border takes the section's colour (150 ms) while the tile lifts and grows on a lively spring.
     public static let hover: TimeInterval = 0.15
-    /// A picked-up thumbnail scales up with an 8 pt shadow; the others shift with this spring.
+    public static let hoverSpring = SPSpring(response: 0.32, dampingFraction: 0.58)
+    /// The result banner's check pops in; the confetti falls for this long (none with Reduce Motion).
+    public static let pop = SPSpring(response: 0.42, dampingFraction: 0.5)
+    public static let confetti: TimeInterval = 1.4
+    /// A picked-up thumbnail scales up with an 8 pt shadow; the others (the workspace's cards) shift, make room and settle
+    /// with this spring.
     public static let dragLiftScale: CGFloat = 1.05
     public static let dragShadow: CGFloat = 8
     public static let thumbnailShift = SPSpring(response: 0.3, dampingFraction: 0.8)

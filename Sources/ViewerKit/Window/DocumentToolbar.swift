@@ -11,30 +11,30 @@ extension NSToolbarItem.Identifier {
     static let tools = Self("viewer.tools")
     static let share = Self("viewer.share")
     static let search = Self("viewer.search")
-    static let organiserTitle = Self("viewer.organiser.title")
-    static let organiserRotateLeft = Self("viewer.organiser.rotateLeft")
-    static let organiserRotateRight = Self("viewer.organiser.rotateRight")
-    static let organiserDelete = Self("viewer.organiser.delete")
-    static let organiserSize = Self("viewer.organiser.size")
-    static let organiserDone = Self("viewer.organiser.done")
+    static let workspaceMode = Self("viewer.workspace.mode")
+    static let workspaceAdd = Self("viewer.workspace.add")
+    static let workspaceRotateLeft = Self("viewer.workspace.rotateLeft")
+    static let workspaceRotateRight = Self("viewer.workspace.rotateRight")
+    static let workspaceDelete = Self("viewer.workspace.delete")
+    static let workspaceSelectAll = Self("viewer.workspace.selectAll")
+    static let workspaceSort = Self("viewer.workspace.sort")
+    static let workspaceLayout = Self("viewer.workspace.layout")
+    static let workspaceFinish = Self("viewer.workspace.finish")
 }
 
 /// The document window's toolbar (ux §2.1, Preview's `CommonToolbar` default set plus Tools): View popup · tracking
 /// separator · Zoom (−, 1, +) · title (centred) · Markup · Rotate · Form Filling (only with form fields) · favourites ·
 /// Tools · Share · Search. Customisable; every tile can be added (View › Customize Toolbar…, "Add to Toolbar").
-/// The organiser has its own: View popup · "Rearrange pages — Report.pdf" · ⟲ ⟳ 🗑 · size · Done.
+/// The workspace has its own (ux §6.2): View popup · Files | Pages · (the title) · Add ▾ · ⟲ ⟳ 🗑 · Select All · Sort ▾ ·
+/// Grid | List · Finish.
 @MainActor
 final class DocumentToolbar: NSObject, NSToolbarDelegate, NSSearchFieldDelegate, NSSharingServicePickerToolbarItemDelegate {
     weak var owner: DocumentWindowController!
-    let organiserTitleView = TitleView()
     private(set) weak var searchField: NSSearchField?
     private var searchDebounce: Timer?
-    let sizeSlider = NSSlider(value: Double(SPMetrics.Organiser.defaultThumbnailWidth),
-                              minValue: Double(SPMetrics.Organiser.thumbnailWidthRange.lowerBound),
-                              maxValue: Double(SPMetrics.Organiser.thumbnailWidthRange.upperBound), target: nil, action: nil)
 
     static let documentToolbarID = "SuperPDFDocumentToolbar"
-    static let organiserToolbarID = "SuperPDFOrganiserToolbar"
+    static let workspaceToolbarID = "SuperPDFWorkspaceToolbar"
 
     func makeToolbar(persists: Bool) -> NSToolbar {
         let toolbar = NSToolbar(identifier: Self.documentToolbarID)
@@ -45,22 +45,21 @@ final class DocumentToolbar: NSObject, NSToolbarDelegate, NSSearchFieldDelegate,
         return toolbar
     }
 
-    func makeOrganiserToolbar() -> NSToolbar {
-        let toolbar = NSToolbar(identifier: Self.organiserToolbarID)
+    func makeWorkspaceToolbar() -> NSToolbar {
+        let toolbar = NSToolbar(identifier: Self.workspaceToolbarID)
         toolbar.delegate = self
         toolbar.displayMode = .iconOnly
         toolbar.allowsUserCustomization = false
-        toolbar.centeredItemIdentifiers = [.organiserTitle]
-        organiserTitleView.update(title: ViewerStrings.Organiser.title, secondary: "— " + (owner.handle.url?.lastPathComponent ?? owner.handle.displayName))
         return toolbar
     }
 
     // MARK: Item sets
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        if toolbar.identifier == Self.organiserToolbarID {
-            return [.viewMenu, .flexibleSpace, .organiserTitle, .flexibleSpace, .organiserRotateLeft, .organiserRotateRight, .organiserDelete,
-                    .organiserSize, .organiserDone]
+        if toolbar.identifier == Self.workspaceToolbarID {
+            // `.space` keeps macOS 26 from merging neighbouring bordered items into one glass capsule.
+            return [.viewMenu, .workspaceMode, .flexibleSpace, .workspaceAdd, .workspaceRotateLeft, .workspaceRotateRight, .workspaceDelete, .space,
+                    .workspaceSelectAll, .workspaceSort, .workspaceLayout, .space, .workspaceFinish]
         }
         let forms: [NSToolbarItem.Identifier] = owner.handle.state.hasFormFields ? [.formFilling] : []
         // The title and subtitle are the window's own (leading, after the zoom group); `.space` keeps macOS 26 from merging
@@ -70,7 +69,7 @@ final class DocumentToolbar: NSObject, NSToolbarDelegate, NSSearchFieldDelegate,
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        if toolbar.identifier == Self.organiserToolbarID { return toolbarDefaultItemIdentifiers(toolbar) }
+        if toolbar.identifier == Self.workspaceToolbarID { return toolbarDefaultItemIdentifiers(toolbar) }
         return [.viewMenu, .sidebarTrackingSeparator, .zoom, .markup, .rotate, .formFilling, .tools, .share, .search,
                 .flexibleSpace, .space] + ToolCatalog.tiles.map(\.id.toolbarItemIdentifier)
     }
@@ -97,11 +96,6 @@ final class DocumentToolbar: NSObject, NSToolbarDelegate, NSSearchFieldDelegate,
             group.label = ViewerStrings.Toolbar.zoom
             group.controlRepresentation = .expanded
             return group
-        case .organiserTitle:
-            let item = NSToolbarItem(itemIdentifier: identifier)
-            item.view = organiserTitleView
-            item.visibilityPriority = .high
-            return item
         case .markup:
             return button(identifier, symbol: "pencil.tip.crop.circle", label: ViewerStrings.Toolbar.markup, action: #selector(toggleMarkup(_:)))
         case .rotate:
@@ -140,29 +134,72 @@ final class DocumentToolbar: NSObject, NSToolbarDelegate, NSSearchFieldDelegate,
             item.visibilityPriority = .low
             searchField = item.searchField
             return item
-        case .organiserRotateLeft:
-            return button(identifier, symbol: "rotate.left", label: ViewerStrings.PageMenu.rotateLeft, action: #selector(organiserRotateLeft(_:)))
-        case .organiserRotateRight:
-            return button(identifier, symbol: "rotate.right", label: ViewerStrings.PageMenu.rotateRight, action: #selector(organiserRotateRight(_:)))
-        case .organiserDelete:
-            return button(identifier, symbol: "trash", label: ViewerStrings.Organiser.delete, action: #selector(organiserDelete(_:)))
-        case .organiserSize:
+        case .workspaceMode:
+            // Words with the pictures: the two views are the workspace's first choice (workspace.png).
+            let control = NSSegmentedControl(labels: [ViewerStrings.Workspace.files, ViewerStrings.Workspace.pages], trackingMode: .selectOne,
+                                             target: self, action: #selector(workspaceMode(_:)))
+            for (segment, name) in ["doc.on.doc", "square.grid.2x2"].enumerated() {
+                control.setImage(NSImage(systemSymbolName: name, accessibilityDescription: nil), forSegment: segment)
+                control.setImageScaling(.scaleProportionallyDown, forSegment: segment)
+            }
+            control.selectedSegment = owner.workspace?.mode == .pages ? 1 : 0
+            control.setAccessibilityLabel(ViewerStrings.Workspace.files + " / " + ViewerStrings.Workspace.pages)
             let item = NSToolbarItem(itemIdentifier: identifier)
-            sizeSlider.target = self
-            sizeSlider.action = #selector(organiserSize(_:))
-            sizeSlider.controlSize = .small
-            sizeSlider.widthAnchor.constraint(equalToConstant: 150).isActive = true
-            item.view = sizeSlider
-            item.label = ViewerStrings.Organiser.size
+            item.view = control
+            item.label = ViewerStrings.Workspace.files + " / " + ViewerStrings.Workspace.pages
+            item.visibilityPriority = .high
             return item
-        case .organiserDone:
+        case .workspaceAdd:
+            let item = NSMenuToolbarItem(itemIdentifier: identifier)
+            item.image = NSImage(systemSymbolName: "plus", accessibilityDescription: ViewerStrings.Workspace.add)
+            item.label = ViewerStrings.Workspace.add
+            item.toolTip = ViewerStrings.Workspace.add
+            item.showsIndicator = true
+            item.menu = owner.addPagesMenu(atGap: owner.handle.pageCount)
+            return item
+        case .workspaceRotateLeft:
+            return button(identifier, symbol: "rotate.left", label: ViewerStrings.Workspace.rotateLeft, action: #selector(workspaceRotateLeft(_:)))
+        case .workspaceRotateRight:
+            return button(identifier, symbol: "rotate.right", label: ViewerStrings.Workspace.rotateRight, action: #selector(workspaceRotateRight(_:)))
+        case .workspaceDelete:
+            return button(identifier, symbol: "trash", label: ViewerStrings.Workspace.delete, action: #selector(workspaceDelete(_:)))
+        case .workspaceSelectAll:
+            return button(identifier, symbol: "checkmark.circle", label: ViewerStrings.Workspace.selectAll, action: #selector(workspaceSelectAll(_:)))
+        case .workspaceSort:
+            let item = NSMenuToolbarItem(itemIdentifier: identifier)
+            item.image = NSImage(systemSymbolName: "arrow.up.arrow.down", accessibilityDescription: ViewerStrings.Workspace.sort)
+            item.label = ViewerStrings.Workspace.sort
+            item.toolTip = ViewerStrings.Workspace.sort
+            item.showsIndicator = true
+            let menu = NSMenu()
+            for (title, sort) in [(ViewerStrings.Workspace.sortNameAscending, WorkspaceSort.nameAscending),
+                                  (ViewerStrings.Workspace.sortNameDescending, .nameDescending), (ViewerStrings.Workspace.sortReverse, .reverse)] {
+                let action = MenuAction { [weak self] in self?.owner.workspace?.sort(sort) }
+                let entry = NSMenuItem(title: title, action: #selector(MenuAction.run(_:)), keyEquivalent: "")
+                entry.target = action
+                entry.representedObject = action
+                menu.addItem(entry)
+            }
+            item.menu = menu
+            return item
+        case .workspaceLayout:
+            let group = NSToolbarItemGroup(itemIdentifier: identifier, images: [Self.symbol("square.grid.2x2"), Self.symbol("list.bullet")],
+                                           selectionMode: .selectOne, labels: [ViewerStrings.Workspace.grid, ViewerStrings.Workspace.list],
+                                           target: self, action: #selector(workspaceLayout(_:)))
+            group.label = ViewerStrings.Workspace.layout
+            group.controlRepresentation = .expanded
+            group.selectedIndex = owner.workspace?.layoutKind == .list ? 1 : 0
+            return group
+        case .workspaceFinish:
             let item = NSToolbarItem(itemIdentifier: identifier)
-            item.title = ViewerStrings.Organiser.done
-            item.label = ViewerStrings.Organiser.done
+            item.title = ViewerStrings.Workspace.finish
+            item.label = ViewerStrings.Workspace.finish
+            item.toolTip = ViewerStrings.Workspace.finish
             item.isBordered = true
             if #available(macOS 26.0, *) { item.style = .prominent }
             item.target = self
-            item.action = #selector(organiserDone(_:))
+            item.action = #selector(workspaceFinish(_:))
+            item.visibilityPriority = .high
             return item
         default:
             return nil
@@ -238,11 +275,27 @@ final class DocumentToolbar: NSObject, NSToolbarDelegate, NSSearchFieldDelegate,
 
     @objc private func showTools(_ sender: Any?) { Services.tools?.showToolsSheet(for: owner.handle) }
 
-    @objc private func organiserRotateLeft(_ sender: Any?) { owner.organiser?.rotateSelection(-1) }
-    @objc private func organiserRotateRight(_ sender: Any?) { owner.organiser?.rotateSelection(1) }
-    @objc private func organiserDelete(_ sender: Any?) { owner.organiser?.grid.deleteSelection() }
-    @objc private func organiserSize(_ sender: NSSlider) { owner.organiser?.setThumbnailWidth(CGFloat(sender.doubleValue)) }
-    @objc private func organiserDone(_ sender: Any?) { owner.hideOrganiser() }
+    @objc private func workspaceMode(_ sender: NSSegmentedControl) { owner.workspace?.setMode(sender.selectedSegment == 1 ? .pages : .files) }
+    @objc private func workspaceLayout(_ sender: NSToolbarItemGroup) { owner.workspace?.setLayout(sender.selectedIndex == 1 ? .list : .grid) }
+    @objc private func workspaceRotateLeft(_ sender: Any?) { owner.workspace?.rotateSelection(-1) }
+    @objc private func workspaceRotateRight(_ sender: Any?) { owner.workspace?.rotateSelection(1) }
+    @objc private func workspaceDelete(_ sender: Any?) { owner.workspace?.deleteSelection() }
+    @objc private func workspaceSelectAll(_ sender: Any?) { owner.workspace?.selectAll() }
+    @objc private func workspaceFinish(_ sender: Any?) { owner.finishWorkspace() }
+
+    /// The workspace's mode, layout or pages changed: its toolbar follows (the Add menu adds at the new end).
+    func workspaceChanged() {
+        guard let toolbar = owner.window?.toolbar, toolbar.identifier == Self.workspaceToolbarID, let workspace = owner.workspace else { return }
+        for item in toolbar.items {
+            switch item.itemIdentifier {
+            case .workspaceMode: (item.view as? NSSegmentedControl)?.selectedSegment = workspace.mode == .pages ? 1 : 0
+            case .workspaceLayout: (item as? NSToolbarItemGroup)?.selectedIndex = workspace.layoutKind == .list ? 1 : 0
+            case .workspaceAdd: (item as? NSMenuToolbarItem)?.menu = owner.addPagesMenu(atGap: owner.handle.pageCount)
+            case .workspaceFinish: item.isEnabled = workspace.pageCount > 0
+            default: break
+            }
+        }
+    }
 
     // MARK: Search (features #4)
 
@@ -277,8 +330,8 @@ final class DocumentToolbar: NSObject, NSToolbarDelegate, NSSearchFieldDelegate,
     }
 }
 
-/// The title in the middle of the toolbar: the draggable proxy icon, the name in 13 pt semibold and "— Edited" in the
-/// secondary colour (ux §2.1). The organiser shows "Rearrange pages — Report.pdf" the same way.
+/// A title for a window without its own: the draggable proxy icon, the name in 13 pt semibold and "— Edited" in the
+/// secondary colour (ux §2.1).
 final class TitleView: NSView, NSDraggingSource {
     private var title = ""
     private var secondary = ""
@@ -291,14 +344,6 @@ final class TitleView: NSView, NSDraggingSource {
         secondary = edited ? ViewerStrings.Toolbar.edited : ""
         self.url = url
         showsIcon = true
-        refresh()
-    }
-
-    func update(title: String, secondary: String) {
-        self.title = title
-        self.secondary = secondary
-        url = nil
-        showsIcon = false
         refresh()
     }
 

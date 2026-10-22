@@ -4,7 +4,7 @@ import SuperPDFCore
 
 /// `Services.pages` (features §1.2): every edit of an open document's page list, as one undo step. Pages are PDFKit
 /// pages on the main actor; an edit records the page list before and after and undo puts the other one back, so the
-/// thumbnails, the organiser, the panels and batch steps share one behaviour.
+/// thumbnails, the workspace, the panels and batch steps share one behaviour.
 @MainActor
 final class PageEditor: PageEditing {
     func perform(_ operation: PageOperation, in document: DocumentHandle) async throws -> UndoGroup {

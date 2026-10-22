@@ -2,9 +2,10 @@ import AppKit
 import SuperPDFCore
 import UniformTypeIdentifiers
 
-/// One tile of the Tools sheet (ux §2.1, §4): 150 × 116, a category-coloured circle with the symbol, the name and two
-/// lines of hint; hover lifts it with an accent border, the keyboard's tile gets a focus ring, files dropped on it run
-/// that tool, right-click adds it to the toolbar or the Dock menu.
+/// One tile of the Tools sheet (ux §2.1, §4): 150 × 116, the section's coloured icon square with a white symbol, the
+/// name and two lines of hint; hover lifts and grows it on a spring with a border in the section's colour, the
+/// keyboard's tile gets an accent focus ring, files dropped on it run that tool, right-click adds it to the toolbar or
+/// the Dock menu.
 @MainActor
 final class TileView: NSView {
     let tile: ToolTile
@@ -17,8 +18,7 @@ final class TileView: NSView {
     private var isDropTarget = false { didSet { if isDropTarget != oldValue { restyle(animated: true) } } }
 
     private let card = FlippedView()
-    private let circle = NSView()
-    private let icon = NSImageView()
+    private let icon: SPIconView
     private let name = NSTextField(labelWithString: "")
     private let hint = NSTextField(wrappingLabelWithString: "")
     private let badge = NSTextField(labelWithString: "")
@@ -26,6 +26,7 @@ final class TileView: NSView {
 
     init(tile: ToolTile, availability: ToolAvailability) {
         self.tile = tile
+        icon = SPIconView(symbol: tile.symbol, color: tile.section.color, radius: SPMetrics.Tile.iconRadius, glyph: SPMetrics.Tile.symbolSize)
         super.init(frame: NSRect(origin: .zero, size: SPMetrics.Tile.size))
         wantsLayer = true
         card.wantsLayer = true
@@ -33,14 +34,7 @@ final class TileView: NSView {
         card.layer?.cornerCurve = .continuous
         card.layer?.borderWidth = SPMetrics.Tile.border
         addSubview(card)
-
-        circle.wantsLayer = true
-        circle.layer?.cornerRadius = SPMetrics.Tile.iconCircle / 2
-        card.addSubview(circle)
-        icon.image = symbol(tile.symbol, size: SPMetrics.Tile.symbolSize)
-        icon.contentTintColor = Style.category(tile.section)
-        icon.imageScaling = .scaleProportionallyDown
-        circle.addSubview(icon)
+        card.addSubview(icon)
 
         name.stringValue = tile.name
         name.font = Style.font(SPFont.tileName)
@@ -107,16 +101,17 @@ final class TileView: NSView {
         let lift = isHovered && !Style.reduceMotion ? SPMetrics.Tile.hoverLift : 0
         card.frame = bounds.offsetBy(dx: 0, dy: -lift)
         let inset = Style.TileInside.padding
-        let d = SPMetrics.Tile.iconCircle
+        let d = SPMetrics.Tile.icon
         let nameHeight = ceil(name.intrinsicContentSize.height)
         let hintHeight = 13.75 * CGFloat(SPMetrics.Tile.hintLines)
-        // The mockup's 6 pt gaps, tightened if a larger circle needs the room.
+        // The mockup's 6 pt gaps, tightened if a larger text size needs the room.
         let room = bounds.height - inset.top - inset.bottom - d - nameHeight - hintHeight
         let gap = max(2, min(Style.TileInside.gap, room / 2))
-        circle.frame = NSRect(x: inset.left, y: inset.top, width: d, height: d)
-        icon.frame = circle.bounds
+        // The icon view has a point of room round the square for its shadow.
+        icon.frame = NSRect(x: inset.left - 1, y: inset.top - 1, width: d + 2, height: d + 2)
+        let circle = NSRect(x: inset.left, y: inset.top, width: d, height: d)
         let width = bounds.width - inset.left - inset.right
-        name.frame = NSRect(x: inset.left - 2, y: circle.frame.maxY + gap, width: width + 4, height: nameHeight)
+        name.frame = NSRect(x: inset.left - 2, y: circle.maxY + gap, width: width + 4, height: nameHeight)
         hint.preferredMaxLayoutWidth = width
         hint.frame = NSRect(x: inset.left - 2, y: name.frame.maxY + gap - 1, width: width + 4, height: hintHeight + 2)
         if !badge.stringValue.isEmpty {
@@ -137,34 +132,47 @@ final class TileView: NSView {
     }
 
     private func restyle(animated: Bool) {
-        let highlighted = isHovered || isKeyboardSelected || isDropTarget
+        let tint = Style.category(tile.section)
         effectiveAppearance.performAsCurrentDrawingAppearance {
             let layer = card.layer
             let apply = {
                 layer?.backgroundColor = (self.isDropTarget ? Style.accent.withAlphaComponent(SPMetrics.DropTarget.tintOpacity)
                     .blended(withFraction: 0.92, of: Style.control) ?? Style.control : Style.control).cgColor
-                layer?.borderColor = (highlighted ? Style.accent : Style.separator).cgColor
-                layer?.borderWidth = self.isDropTarget || self.isKeyboardSelected ? SPMetrics.DropTarget.ring : SPMetrics.Tile.border
-                layer?.shadowColor = NSColor.black.cgColor
-                layer?.shadowOpacity = self.isHovered ? 0.10 : 0.04
-                layer?.shadowRadius = self.isHovered ? 6 : 1
-                layer?.shadowOffset = CGSize(width: 0, height: self.isHovered ? -4 : -1)
+                // The keyboard's tile and a drop target say so in the accent; a hovered tile glows in its section's colour.
+                let border: NSColor = self.isKeyboardSelected || self.isDropTarget ? Style.accent : self.isHovered ? tint : Style.separator
+                layer?.borderColor = border.cgColor
+                layer?.borderWidth = self.isDropTarget || self.isKeyboardSelected ? SPMetrics.DropTarget.ring
+                    : self.isHovered ? 1.5 : SPMetrics.Tile.border
+                layer?.shadowColor = (self.isHovered ? tint : NSColor.black).cgColor
+                layer?.shadowOpacity = self.isHovered ? 0.22 : 0.04
+                layer?.shadowRadius = self.isHovered ? 10 : 1
+                layer?.shadowOffset = CGSize(width: 0, height: self.isHovered ? -6 : -1)
             }
-            if animated && !Style.reduceMotion {
-                CATransaction.begin()
-                CATransaction.setAnimationDuration(SPMotion.hover)
-                apply()
-                CATransaction.commit()
-            } else {
-                CATransaction.begin()
-                CATransaction.setDisableActions(true)
-                apply()
-                CATransaction.commit()
-            }
-            circle.layer?.backgroundColor = Style.category(tile.section).withAlphaComponent(SPMetrics.Tile.iconCircleOpacity).cgColor
+            CATransaction.begin()
+            if animated && !Style.reduceMotion { CATransaction.setAnimationDuration(SPMotion.hover) } else { CATransaction.setDisableActions(true) }
+            apply()
+            CATransaction.commit()
             badgeBack.layer?.backgroundColor = Style.faintFill.cgColor
         }
+        bounce(animated: animated)
         needsLayout = true
+    }
+
+    /// Hover grows the card on a lively spring (ux §2.5; `layout` lifts it); with Reduce Motion it only changes colour.
+    private func bounce(animated: Bool) {
+        guard let layer = card.layer else { return }
+        let scale = isHovered && !Style.reduceMotion ? SPMetrics.Tile.hoverScale : 1
+        // About the card's centre: the layer's anchor is a corner, so move it by half the growth either way.
+        var transform = CATransform3DMakeTranslation(bounds.width / 2, bounds.height / 2, 0)
+        transform = CATransform3DScale(transform, scale, scale, 1)
+        transform = CATransform3DTranslate(transform, -bounds.width / 2, -bounds.height / 2, 0)
+        let from = layer.presentation()?.transform ?? layer.transform
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer.transform = transform
+        CATransaction.commit()
+        guard animated, !Style.reduceMotion else { layer.removeAnimation(forKey: "hover"); return }
+        layer.add(SPMotion.hoverSpring.animation("transform", from: NSValue(caTransform3D: from), to: NSValue(caTransform3D: transform)), forKey: "hover")
     }
 
     // MARK: Mouse

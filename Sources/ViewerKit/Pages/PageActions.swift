@@ -3,7 +3,7 @@ import PDFKit
 import SuperPDFCore
 import UniformTypeIdentifiers
 
-/// The page edits of one document window: thumbnails, the organiser, the toolbar's Rotate, the context menu and the
+/// The page edits of one document window: thumbnails, the workspace, the toolbar's Rotate, the context menu and the
 /// menus all come through here. Each edit runs through PagesKit (`Services.pages`) and is handed to DocumentKit as an
 /// in-place result, so it is one undo step and marks the document edited (ARCHITECTURE "Output policy").
 @MainActor
@@ -11,10 +11,14 @@ final class PageActions {
     let document: DocumentHandle
     private let environment: () -> ViewerEnvironment
     private weak var window: NSWindow?
-    /// Pages mixed in from other files, by page identity, until the document is saved (organiser colour bars).
+    /// Pages mixed in from other files, by page identity, until the document is saved (the workspace's files and pills).
     private(set) var origins: [ObjectIdentifier: PageOrigin] = [:]
     /// The selection the next reload should show (the moved, inserted or remaining pages).
     var pendingSelection: IndexSet?
+    /// Files still turning into PDFs on their way in, with the page they go before (nil: the end).
+    private var converting: [(file: PendingFile, before: PDFPage?)] = []
+    /// Called when a file starts or finishes converting, or reports progress (the workspace shows it on its card).
+    var onPendingChange: (() -> Void)?
 
     init(document: DocumentHandle, window: NSWindow?, environment: @escaping () -> ViewerEnvironment) {
         self.document = document
@@ -34,6 +38,27 @@ final class PageActions {
     }
 
     func origin(of page: PDFPage) -> PageOrigin? { origins[ObjectIdentifier(page)] }
+
+    /// The workspace's view of the document: its pages with their files, and the files still converting.
+    func workspaceModel() -> WorkspaceModel {
+        WorkspaceModel(entries: model(selection: []).entries, documentName: document.url?.lastPathComponent ?? document.displayName, pending: pending)
+    }
+
+    /// The files converting now, with the gap each will go into.
+    var pending: [PendingFile] {
+        converting.map { item in
+            var file = item.file
+            file.gap = gap(before: item.before)
+            return file
+        }
+    }
+
+    /// Where the page is now (the end when it's gone or nil).
+    private func gap(before page: PDFPage?) -> Int {
+        guard let page else { return document.pageCount }
+        let index = document.pdf.index(for: page)
+        return index == NSNotFound ? document.pageCount : index
+    }
 
     /// Keeps the colour of pages still in the document only (a removed page's identity may be reused).
     func pruneOrigins() {
@@ -78,44 +103,104 @@ final class PageActions {
         perform(operation, tool: .rearrangePages, select: after.selection)
     }
 
-    func duplicate(_ pages: [Int]) {
-        guard let last = pages.max() else { return }
-        perform(.duplicate(pages.sorted()), tool: .insertPages, select: IndexSet(integersIn: last + 1..<last + 1 + pages.count))
-    }
-
     func insertBlank(after index: Int) {
         perform(.insertBlank(after: index), tool: .insertPages, select: [index + 1])
     }
 
-    /// Files dropped or chosen: each file's pages in order before `gap`, converting non-PDFs first (ux §3). Pages from
-    /// another file keep that file's colour in the organiser until the next save when `tagged`.
-    func insertFiles(_ urls: [URL], atGap gap: Int, tagged: Bool) {
+    /// Files dropped or chosen: each file's pages in order before `gap`, converting non-PDFs first (ux §3). Each file
+    /// waits as a card in the workspace while it converts, then goes in as its own undo step. When `tagged`, its pages
+    /// keep the file's name and colour until the next save (`firstColor` onwards, else the next free colours).
+    func insertFiles(_ urls: [URL], atGap gap: Int, tagged: Bool, firstColor: Int? = nil) {
+        guard !urls.isEmpty else { return }
+        let before = document.pdf.page(at: min(max(gap, 0), document.pageCount))
+        var color = firstColor ?? model(selection: []).nextOriginColor
+        let files = urls.map { url -> PendingFile in
+            defer { color = (color + 1) % PageOrigin.palette.count }
+            return PendingFile(name: url.lastPathComponent, colorIndex: color, gap: gap)
+        }
+        converting += files.map { ($0, before) }
+        onPendingChange?()
         Task {
-            var at = min(max(gap, 0), document.pageCount)
-            var groups: [UndoGroup] = []
-            var tags: [(range: Range<Int>, origin: PageOrigin)] = []
-            var nextColor = model(selection: []).nextOriginColor
-            do {
-                for url in urls {
-                    let pdf = try await pdfFile(for: url)
+            var inserted = IndexSet()
+            for (url, file) in zip(urls, files) {
+                defer { finish(file.id) }
+                do {
+                    let pdf = try await pdfFile(for: url, progress: ToolProgress { [weak self] update in
+                        Task { @MainActor in self?.progress(file.id, update.total > 0 ? update.fraction : nil) }
+                    })
                     guard let count = CGPDFDocument(pdf as CFURL)?.numberOfPages, count > 0 else { continue }
-                    groups.append(try await Services.pages.perform(.insertFile(.file(pdf), pages: [], at: at), in: document))
-                    if tagged {
-                        tags.append((at..<at + count, PageOrigin(fileName: url.lastPathComponent, colorIndex: nextColor)))
-                        nextColor = (nextColor + 1) % PageOrigin.palette.count
+                    let at = self.gap(before: before)
+                    let group = try await Services.pages.perform(.insertFile(.file(pdf), pages: [], at: at), in: document)
+                    if tagged { tag(at..<at + count, as: PageOrigin(fileName: file.name, colorIndex: file.colorIndex)) }
+                    inserted = IndexSet(integersIn: at..<at + count)
+                    // Leave the card before the document reloads, so the file's pages take its place.
+                    finish(file.id)
+                    await apply([group], name: group.actionName, tool: .insertPages, select: inserted)
+                } catch {
+                    environment().alert(error.localizedDescription, window)
+                }
+            }
+        }
+    }
+
+    private func progress(_ id: UUID, _ fraction: Double?) {
+        guard let index = converting.firstIndex(where: { $0.file.id == id }) else { return }
+        converting[index].file.fraction = fraction
+        onPendingChange?()
+    }
+
+    private func finish(_ id: UUID) {
+        guard converting.contains(where: { $0.file.id == id }) else { return }
+        converting.removeAll { $0.file.id == id }
+        onPendingChange?()
+    }
+
+    /// Copies of pages right after the last of them. In the workspace's Files view the copies are a file of their own
+    /// (`asNewFile`: the same name, the next colour); otherwise each copy belongs where its page does.
+    func duplicate(_ pages: [Int], asNewFile: Bool) {
+        let pages = pages.sorted()
+        guard let last = pages.last else { return }
+        let sources = pages.compactMap { document.pdf.page(at: $0) }
+        let newFile = asNewFile ? sources.first.map { page in
+            PageOrigin(fileName: origin(of: page)?.fileName ?? document.url?.lastPathComponent ?? document.displayName,
+                       colorIndex: model(selection: []).nextOriginColor)
+        } : nil
+        Task {
+            do {
+                let group = try await Services.pages.perform(.duplicate(pages), in: document)
+                for (offset, source) in sources.enumerated() {
+                    guard let copy = document.pdf.page(at: last + 1 + offset) else { continue }
+                    if let origin = newFile ?? origin(of: source) { origins[ObjectIdentifier(copy)] = origin }
+                }
+                await apply([group], name: group.actionName, tool: .insertPages, select: IndexSet(integersIn: last + 1..<last + 1 + pages.count))
+            } catch {
+                environment().alert(error.localizedDescription, window)
+            }
+        }
+    }
+
+    /// Puts the pages in a new order given as runs of current indices (a sort in the workspace), as one undo step.
+    func arrange(_ blocks: [[Int]]) {
+        Task {
+            var order = Array(0..<document.pageCount)
+            var groups: [UndoGroup] = []
+            var position = 0
+            do {
+                for block in blocks where !block.isEmpty {
+                    let current = block.compactMap { order.firstIndex(of: $0) }.sorted()
+                    if current != Array(position..<position + current.count) {
+                        groups.append(try await Services.pages.perform(.move(current, to: position), in: document))
+                        let moving = current.map { order[$0] }
+                        order = order.enumerated().filter { !current.contains($0.offset) }.map(\.element)
+                        order.insert(contentsOf: moving, at: position)
                     }
-                    at += count
+                    position += current.count
                 }
             } catch {
                 environment().alert(error.localizedDescription, window)
             }
             guard !groups.isEmpty else { return }
-            for (range, origin) in tags {
-                for index in range { if let page = document.pdf.page(at: index) { origins[ObjectIdentifier(page)] = origin } }
-            }
-            let first = min(max(gap, 0), document.pageCount)
-            await apply(groups, name: groups.count == 1 ? groups[0].actionName : "Insert Pages", tool: .insertPages,
-                        select: IndexSet(integersIn: first..<at))
+            await apply(groups, name: groups[0].actionName, tool: .rearrangePages, select: nil)
         }
     }
 
@@ -193,7 +278,7 @@ final class PageActions {
     }
 
     /// A PDF for a dropped file: the file itself, or ConvertKit's conversion into the work folder.
-    private func pdfFile(for url: URL) async throws -> URL {
+    private func pdfFile(for url: URL, progress: ToolProgress) async throws -> URL {
         if (try? url.resourceValues(forKeys: [.contentTypeKey]))?.contentType?.conforms(to: .pdf) == true || url.pathExtension.lowercased() == "pdf" {
             return url
         }
@@ -202,7 +287,7 @@ final class PageActions {
         }
         let folder = SuperPDFPaths.ensure(SuperPDFPaths.work.appendingPathComponent(UUID().uuidString, isDirectory: true))
         let destination = folder.appendingPathComponent(url.deletingPathExtension().lastPathComponent + ".pdf")
-        let result = try await convert.convert(ConversionJob(inputs: [url], output: .pdf, destination: destination), progress: .ignored)
+        let result = try await convert.convert(ConversionJob(inputs: [url], output: .pdf, destination: destination), progress: progress)
         guard let output = result.outputs.first else { throw ToolError(Strings.Errors.conversionFailed(url.lastPathComponent)) }
         return output
     }

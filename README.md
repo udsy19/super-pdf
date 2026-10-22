@@ -50,7 +50,7 @@ Uninstall: `curl -fsSL https://udsy19.github.io/super-pdf/install.sh | bash -s -
 
 | | |
 |---|---|
-| **The window** | Preview's: thumbnails, table of contents, highlights and notes, bookmarks, attachments, search; the page organiser; the markup bar; reader mode and read aloud. |
+| **The window** | Preview's: thumbnails, table of contents, highlights and notes, bookmarks, attachments, search; the markup bar; reader mode and read aloud. The workspace: drop several files of any kind and arrange them as big colourful cards — files or pages, drag to reorder, preview, rotate, duplicate, sort — then Finish. |
 | **Tools** (⌘T) | 52 tiles in eight sections — Pages, Convert, Edit, Mark up, Sign & fill, Protect, Fix & check, Scan — each one panel with one button; the document itself is the live preview. |
 | **Do this to many files** | Any of the file-level tools on a folder, in order; save the steps as a routine. |
 | **Finder** | Quick Actions: Combine in Super PDF, Make Smaller, Convert to PDF, Recognise Text. Services: Open Selection as PDF. Print dialogs: Save to Super PDF. |

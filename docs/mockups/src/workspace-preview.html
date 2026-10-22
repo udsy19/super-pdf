@@ -1,0 +1,24 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Super PDF — Workspace preview</title><link rel="stylesheet" href="shared.css"></head>
+<body><script src="shared.js"></script>
+<script>
+// The preview (ux §6.2): the zoom button on a card, or Space, shows the page large over the workspace with ‹ 5 / 12 ›,
+// rotate and delete. Arrow keys turn pages; Esc or Space closes it.
+const S = SP, I = SP.I;
+const x = (c) => 128 + c * 220, y = (r) => 28 + r * 270;
+const cards = [
+  S.fileCard({ x: x(0), y: y(0), name: "Lease agreement.pdf", color: "sky", caption: "12 pages", count: 12, kind: "text", sel: true }),
+  S.fileCard({ x: x(1), y: y(0), name: "Floor plan.png", color: "pink", caption: "1 page", count: 1, kind: "photo", landscape: true }),
+  S.fileCard({ x: x(2), y: y(0), name: "Budget 2026.xlsx", color: "peach", caption: "2 pages", count: 2, kind: "table" }),
+  S.fileCard({ x: x(3), y: y(0), name: "Schedule.pdf", color: "mint", caption: "3 pages", count: 3, kind: "letter" }),
+  S.dropCard({ x: x(0), y: y(1) }),
+];
+const scale = 0.78, pw = Math.round(560 * scale), ph = Math.round(560 * 11 / 8.5 * scale);
+const overlay = `<div class="pv">
+  <div class="stage" style="width:${pw}px;height:${ph}px"><div style="transform:scale(${scale});transform-origin:0 0">${S.pageHTML(5)}</div></div>
+  <div class="top">${S.pill("sky", "Lease agreement.pdf", "position:static;transform:none;display:inline-block")}<span class="x">${I.x}</span></div>
+  <div class="bar"><i>${I.chevL}</i><span class="n">5 / 12</span><i>${I.chevR}</i><span class="sep"></span><i>${I.rotate}</i><i>${I.rotateR}</i><span class="sep"></span><i class="red">${I.trashR}</i></div>
+</div>`;
+const full = `<div class="ws"><div class="grid-w">${cards.join("")}</div>
+  ${S.wsStatus("<b>4 files</b> · 18 pages · 1 selected", "Drag to reorder · Space to preview · Drop more files anywhere")}${overlay}</div>`;
+S.render({ titlebarHTML: S.wsToolbar({ mode: "files", title: "Combined", subtitle: "4 files · 18 pages" }), full });
+</script></body></html>

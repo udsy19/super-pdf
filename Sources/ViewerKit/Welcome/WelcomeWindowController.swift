@@ -1,11 +1,10 @@
 import AppKit
-import PDFKit
 import SuperPDFCore
-import UniformTypeIdentifiers
 
-/// The welcome window (ux §6.1, welcome.png): 760 × 520, not resizable, centred. The app's mark and name, one
-/// sentence, four big targets — Open a PDF, Combine files, Scan, Convert a file — and the recent files. Dropping files
-/// anywhere does the obvious thing: one file opens (converted first if needed), several combine.
+/// The welcome window (ux §6.1, welcome.png): 760 × 520, not resizable, centred, on a soft wash of the brand colours.
+/// The app's multicolour mark and name, one friendly sentence, four big colourful targets — Open a PDF, Combine files,
+/// Scan, Convert a file — the recent files and a tip about dropping. Dropping files anywhere does the obvious thing: one
+/// file opens (converted first if needed), several open the workspace to combine them (ux §6.2).
 @MainActor
 final class WelcomeWindowController: NSWindowController, NSWindowDelegate {
     private unowned let viewer: Viewer
@@ -79,44 +78,9 @@ final class WelcomeWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    /// Several files become one new unsaved document, shown in the organiser with a column listing the files and each
-    /// file's pages in its colour (ux §6.1, §6.2).
+    /// Several files: the workspace, a card per file (ux §6.1, §6.2); the window says when it is still reading them.
     func combine(_ urls: [URL]) async {
-        guard let documents = Services.documents else { return }
-        let combined = PDFDocument()
-        var parts: [(range: Range<Int>, name: String)] = []
-        for url in urls {
-            guard let source = await Self.pdf(for: url) else { continue }
-            let start = combined.pageCount
-            for index in 0..<source.pageCount {
-                if let page = source.page(at: index) { combined.insert(page, at: combined.pageCount) }
-            }
-            if combined.pageCount > start { parts.append((start..<combined.pageCount, url.lastPathComponent)) }
-        }
-        guard combined.pageCount > 0, let data = combined.dataRepresentation() else { return }
-        do {
-            let handle = try documents.openUntitled(data, name: ViewerStrings.Welcome.combinedName)
-            guard let controller = viewer.controller(for: handle) else { return }
-            for (offset, part) in parts.enumerated() {
-                controller.pageActions.tag(part.range, as: PageOrigin(fileName: part.name, colorIndex: offset % PageOrigin.palette.count))
-            }
-            controller.showOrganiser(adding: [])
-        } catch {
-            viewer.environment.alert(error.localizedDescription, window)
-        }
-    }
-
-    /// A readable PDF for a file: PDFs as they are (unlocked ones only), others through ConvertKit.
-    private static func pdf(for url: URL) async -> PDFDocument? {
-        if UTType(filenameExtension: url.pathExtension)?.conforms(to: .pdf) == true {
-            guard let pdf = PDFDocument(url: url), !pdf.isLocked else { return nil }
-            return pdf
-        }
-        guard let convert = Services.convert, convert.canConvertToPDF(url) else { return nil }
-        let folder = SuperPDFPaths.ensure(SuperPDFPaths.work.appendingPathComponent(UUID().uuidString, isDirectory: true))
-        let job = ConversionJob(inputs: [url], output: .pdf, destination: folder.appendingPathComponent(url.deletingPathExtension().lastPathComponent + ".pdf"))
-        guard let output = try? await convert.convert(job, progress: .ignored).outputs.first else { return nil }
-        return PDFDocument(url: output)
+        await viewer.combine(urls, from: window) { [weak self] working in self?.welcomeView.isWorking = working }
     }
 }
 
@@ -124,18 +88,23 @@ final class WelcomeWindowController: NSWindowController, NSWindowDelegate {
 final class WelcomeView: NSView {
     weak var controller: WelcomeWindowController?
     var recents: [RecentDocument] = [] { didSet { layoutRecents() } }
+    /// The first file of a combine is converting before the workspace can open.
+    var isWorking = false { didSet { dropOverlay.isWorking = isWorking; dropOverlay.isHidden = !isWorking } }
     private(set) var targets: [WelcomeTargetView] = []
     private let recentHeader = NSTextField(labelWithString: ViewerStrings.Welcome.recent)
     private let recentScroll = NSScrollView()
     private let recentList = FlippedView()
     private let emptyLabel = NSTextField(labelWithString: Strings.Empty.welcomeRecents)
-    private let dropHighlight = DropHighlightView()
+    private let tip = NSTextField(labelWithString: ViewerStrings.Welcome.dropTip)
+    private let tipIcon = NSImageView()
+    let dropOverlay = WelcomeDropView()
 
     // Positions from welcome.html: 26 pt top padding, the 56 pt mark, 28 pt title, 15 pt subtitle, 160 × 140 targets 16 pt
-    // apart, "Recent" 22 pt below them, 36 pt rows.
+    // apart, "Recent" 22 pt below them, 36 pt rows, the tip 18 pt above the bottom.
     static let targetTop: CGFloat = 174
     static let recentTop: CGFloat = 336
     static let rowsTop: CGFloat = 359
+    static let tipBottom: CGFloat = 18
     static var contentWidth: CGFloat { 4 * SPMetrics.Welcome.targetSize.width + 3 * 16 }
 
     override var isFlipped: Bool { true }
@@ -144,10 +113,10 @@ final class WelcomeView: NSView {
         super.init(frame: frame)
         let side = ((frame.width - Self.contentWidth) / 2).rounded()
         let specs: [(String, String, String, SPColorToken, String?)] = [
-            ("doc", ViewerStrings.Welcome.open, ViewerStrings.Welcome.openHint, SPColor.categoryBlue, "⌘O"),
-            ("doc.on.doc", ViewerStrings.Welcome.combine, ViewerStrings.Welcome.combineHint, SPColor.categoryBlue, nil),
-            ("scanner", ViewerStrings.Welcome.scan, ViewerStrings.Welcome.scanHint, SPColor.categoryBrown, nil),
-            ("doc.badge.arrow.up", ViewerStrings.Welcome.convert, ViewerStrings.Welcome.convertHint, SPColor.categoryGreen, nil),
+            ("doc.fill", ViewerStrings.Welcome.open, ViewerStrings.Welcome.openHint, SPColor.brand, "⌘O"),
+            ("doc.on.doc.fill", ViewerStrings.Welcome.combine, ViewerStrings.Welcome.combineHint, ToolSection.pages.color, nil),
+            ("scanner.fill", ViewerStrings.Welcome.scan, ViewerStrings.Welcome.scanHint, ToolSection.scan.color, nil),
+            ("arrow.triangle.2.circlepath", ViewerStrings.Welcome.convert, ViewerStrings.Welcome.convertHint, ToolSection.convert.color, nil),
         ]
         for (index, spec) in specs.enumerated() {
             let target = WelcomeTargetView(symbol: spec.0, title: spec.1, hint: spec.2, color: spec.3, shortcut: spec.4)
@@ -161,7 +130,8 @@ final class WelcomeView: NSView {
         recentHeader.textColor = SPColor.secondaryLabel.color
         recentHeader.frame = NSRect(x: side, y: Self.recentTop, width: 200, height: 17)
         addSubview(recentHeader)
-        recentScroll.frame = NSRect(x: side, y: Self.rowsTop, width: Self.contentWidth, height: frame.height - Self.rowsTop - 14)
+        let tipTop = frame.height - Self.tipBottom - 16
+        recentScroll.frame = NSRect(x: side, y: Self.rowsTop, width: Self.contentWidth, height: tipTop - Self.rowsTop - 6)
         recentScroll.documentView = recentList
         recentScroll.drawsBackground = false
         recentScroll.hasVerticalScroller = true
@@ -171,9 +141,20 @@ final class WelcomeView: NSView {
         emptyLabel.textColor = SPColor.tertiaryLabel.color
         emptyLabel.frame = NSRect(x: side + 8, y: Self.rowsTop + 9, width: Self.contentWidth, height: 18)
         addSubview(emptyLabel)
-        dropHighlight.isHidden = true
-        dropHighlight.frame = bounds.insetBy(dx: 6, dy: 6)
-        addSubview(dropHighlight)
+        tip.font = SPFont.secondary.font()
+        tip.textColor = SPColor.secondaryLabel.color
+        tip.sizeToFit()
+        tipIcon.image = NSImage(systemSymbolName: "arrow.down.doc", accessibilityDescription: nil)?
+            .withSymbolConfiguration(.init(pointSize: 11, weight: .semibold))
+        tipIcon.contentTintColor = SPColor.brand.color
+        let tipWidth = 16 + 4 + tip.frame.width
+        tipIcon.frame = NSRect(x: (frame.width - tipWidth) / 2, y: tipTop, width: 16, height: 16)
+        tip.frame.origin = NSPoint(x: tipIcon.frame.maxX + 4, y: tipTop + (16 - tip.frame.height) / 2)
+        addSubview(tipIcon)
+        addSubview(tip)
+        dropOverlay.isHidden = true
+        dropOverlay.frame = bounds.insetBy(dx: 8, dy: 8)
+        addSubview(dropOverlay)
         registerForDraggedTypes([.fileURL])
         layoutRecents()
     }
@@ -207,6 +188,7 @@ final class WelcomeView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         SPColor.windowBackground.color.setFill()
         dirtyRect.fill()
+        drawWash()
         drawMark()
         let title = NSAttributedString(string: Strings.appName, attributes: [.font: SPFont.welcomeTitle.font(), .foregroundColor: SPColor.label.color,
                                                                              .kern: -0.56])
@@ -218,25 +200,44 @@ final class WelcomeView: NSView {
         subtitle.draw(at: NSPoint(x: (bounds.width - subtitleSize.width) / 2, y: 132 + (19.5 - subtitleSize.height) / 2))
     }
 
-    /// The mark: a rounded blue tile with a page (welcome.png).
+    /// Soft pools of the brand colours along the top (welcome.html's radial gradients).
+    private func drawWash() {
+        let pools: [(NSColor, CGFloat, CGFloat, CGFloat)] = [
+            (SPColor.categoryBlue.color, 0.08, 360, 0.14), (SPColor.categoryPink.color, 0.94, 340, 0.12), (SPColor.brand.color, 0.5, 420, 0.09),
+        ]
+        for (color, x, width, alpha) in pools {
+            NSGraphicsContext.saveGraphicsState()
+            let transform = NSAffineTransform()
+            transform.translateX(by: bounds.width * x, yBy: 0)
+            transform.scaleX(by: width / 200, yBy: 1)
+            transform.concat()
+            NSGradient(colors: [color.withAlphaComponent(alpha), color.withAlphaComponent(0)])?
+                .draw(fromCenter: .zero, radius: 0, toCenter: .zero, radius: 200, options: [])
+            NSGraphicsContext.restoreGraphicsState()
+        }
+    }
+
+    /// The mark: a rounded square washing from blue through the app's indigo and violet to pink, with a white page.
     private func drawMark() {
         let rect = NSRect(x: (bounds.width - 56) / 2, y: 26, width: 56, height: 56)
-        let path = NSBezierPath(roundedRect: rect, xRadius: 13, yRadius: 13)
+        let path = NSBezierPath(roundedRect: rect, xRadius: 15, yRadius: 15)
         NSGraphicsContext.saveGraphicsState()
         let shadow = NSShadow()
-        shadow.shadowColor = NSColor(srgbRed: 80 / 255, green: 126 / 255, blue: 247 / 255, alpha: 0.35)
-        shadow.shadowBlurRadius = 12
-        shadow.shadowOffset = NSSize(width: 0, height: -4)
+        shadow.shadowColor = SPColor.brand.color.withAlphaComponent(0.4)
+        shadow.shadowBlurRadius = 16
+        shadow.shadowOffset = NSSize(width: 0, height: -6)
         shadow.set()
-        NSColor(hex: "#507EF7").setFill()
+        SPColor.brand.color.setFill()
         path.fill()
         NSGraphicsContext.restoreGraphicsState()
-        NSGradient(starting: NSColor(hex: "#B6CFFB"), ending: NSColor(hex: "#507EF7"))?.draw(in: path, angle: -70)
-        let symbol = NSImage(systemSymbolName: "doc", accessibilityDescription: nil)?
-            .withSymbolConfiguration(.init(pointSize: 26, weight: .regular).applying(.init(paletteColors: [.white])))
-        if let symbol {
-            let size = symbol.size
-            symbol.draw(in: NSRect(x: rect.midX - size.width / 2, y: rect.midY - size.height / 2, width: size.width, height: size.height))
+        let colors = [NSColor(hex: "#6E8BFF"), SPColor.brand.color, NSColor(hex: "#B05CF0"), SPColor.categoryPink.color]
+        NSGradient(colors: colors, atLocations: [0, 0.45, 0.8, 1], colorSpace: .sRGB)?.draw(in: path, angle: 55)
+        NSGradient(starting: NSColor.white.withAlphaComponent(0.22), ending: NSColor.white.withAlphaComponent(0))?
+            .draw(in: NSBezierPath(roundedRect: rect.insetBy(dx: 1, dy: 1), xRadius: 14, yRadius: 14), angle: 90)
+        if let glyph = SPIcon.glyphImage("doc.text.fill", size: 25, weight: .medium) {
+            let size = glyph.size
+            glyph.draw(in: NSRect(x: rect.midX - size.width / 2, y: rect.midY - size.height / 2, width: size.width, height: size.height),
+                       from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
         }
     }
 
@@ -251,29 +252,40 @@ final class WelcomeView: NSView {
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { highlight(sender) }
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { highlight(sender) }
-    override func draggingExited(_ sender: NSDraggingInfo?) { dropHighlight.isHidden = true }
+    override func draggingExited(_ sender: NSDraggingInfo?) { if !isWorking { dropOverlay.isHidden = true } }
 
     private func highlight(_ info: NSDraggingInfo) -> NSDragOperation {
+        guard !isWorking else { return [] }
         let decision = decision(info)
         switch decision.outcome {
         case .open, .combine:
-            dropHighlight.label = decision.label
-            dropHighlight.isRefusal = false
-            dropHighlight.isHidden = false
+            if case .combine(let urls) = decision.outcome {
+                dropOverlay.label = ViewerStrings.Welcome.dropToCombine(urls.count)
+            } else {
+                dropOverlay.label = ViewerStrings.Welcome.dropToOpen
+            }
+            dropOverlay.isRefusal = false
+            show(dropOverlay)
             return .copy
         case .refuse(let reason):
-            dropHighlight.label = reason
-            dropHighlight.isRefusal = true
-            dropHighlight.isHidden = false
+            dropOverlay.label = reason
+            dropOverlay.isRefusal = true
+            show(dropOverlay)
             return []
         default:
-            dropHighlight.isHidden = true
+            dropOverlay.isHidden = true
             return []
         }
     }
 
+    private func show(_ overlay: WelcomeDropView) {
+        guard overlay.isHidden else { return }
+        overlay.isHidden = false
+        overlay.bounce()
+    }
+
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        dropHighlight.isHidden = true
+        dropOverlay.isHidden = true
         let decision = decision(sender)
         guard decision.isAllowed else { return false }
         controller?.drop(decision)
@@ -285,8 +297,89 @@ final class FlippedView: NSView {
     override var isFlipped: Bool { true }
 }
 
-/// One of the four big targets: 160 × 140, 14 pt radius, a 40 pt circle in the category colour at 15 % with its symbol,
-/// the label 15 pt semibold and the hint 11 pt; hover turns the border accent and lifts it (welcome.png).
+/// The welcome window's drop target: a dashed, tinted card over the window with a bobbing arrow in an accent circle and
+/// what the drop will do ("Drop to combine 3 files"); or a refusal with its reason; or "Getting your files ready…" with
+/// a spinner while the first file converts.
+final class WelcomeDropView: NSView {
+    var label = "" { didSet { needsDisplay = true } }
+    var isRefusal = false { didSet { needsDisplay = true } }
+    var isWorking = false {
+        didSet {
+            label = isWorking ? ViewerStrings.Welcome.gettingReady : label
+            isRefusal = false
+            if isWorking { spinner.startAnimation(nil) } else { spinner.stopAnimation(nil) }
+            needsDisplay = true
+        }
+    }
+    private let spinner = NSProgressIndicator()
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        spinner.style = .spinning
+        spinner.isDisplayedWhenStopped = false
+        addSubview(spinner)
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    override var isFlipped: Bool { true }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    private var circle: NSRect { NSRect(x: bounds.midX - 32, y: bounds.midY - 56, width: 64, height: 64) }
+
+    override func layout() {
+        super.layout()
+        spinner.frame = circle.insetBy(dx: 16, dy: 16)
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let accent = isRefusal ? SPColor.secondaryLabel.color : SPColor.accent.color
+        let card = NSBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), xRadius: 18, yRadius: 18)
+        SPColor.windowBackground.color.withAlphaComponent(0.92).setFill()
+        card.fill()
+        accent.withAlphaComponent(0.07).setFill()
+        card.fill()
+        card.lineWidth = 2.5
+        card.setLineDash([9, 6], count: 2, phase: 0)
+        accent.withAlphaComponent(0.6).setStroke()
+        card.stroke()
+        if !isWorking {
+            NSGraphicsContext.saveGraphicsState()
+            let shadow = NSShadow()
+            shadow.shadowColor = accent.withAlphaComponent(0.4)
+            shadow.shadowBlurRadius = 14
+            shadow.shadowOffset = NSSize(width: 0, height: -5)
+            shadow.set()
+            accent.setFill()
+            NSBezierPath(ovalIn: circle).fill()
+            NSGraphicsContext.restoreGraphicsState()
+            if let arrow = SPIcon.glyphImage(isRefusal ? "nosign" : "arrow.down", size: 26, weight: .bold) {
+                arrow.draw(in: NSRect(x: circle.midX - arrow.size.width / 2, y: circle.midY - arrow.size.height / 2, width: arrow.size.width, height: arrow.size.height),
+                           from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+            }
+        }
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .center
+        let text = NSAttributedString(string: label, attributes: [.font: NSFont.systemFont(ofSize: 17, weight: .semibold), .foregroundColor: SPColor.label.color,
+                                                                  .paragraphStyle: paragraph])
+        text.draw(with: NSRect(x: 40, y: circle.maxY + 18, width: bounds.width - 80, height: 48), options: [.usesLineFragmentOrigin])
+    }
+
+    /// The arrow circle drops in with a bounce (not with Reduce Motion).
+    func bounce() {
+        needsDisplay = true
+        guard let layer, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.fromValue = 0
+        fade.toValue = 1
+        fade.duration = 0.15
+        layer.add(fade, forKey: "fade")
+    }
+}
+
+/// One of the four big targets: 160 × 140, 14 pt radius, a 40 pt rounded square in its colour with a white symbol, the
+/// label 15 pt semibold and the hint 11 pt; hover borders it in its colour and lifts it on a spring (welcome.png).
 final class WelcomeTargetView: NSControl {
     private let symbol: String
     private let title: String
@@ -294,11 +387,12 @@ final class WelcomeTargetView: NSControl {
     private let color: SPColorToken
     private let shortcut: String?
     var onPress: (() -> Void)?
-    var isHovered = false { didSet { needsDisplay = true } }
+    var isHovered = false { didSet { if isHovered != oldValue { needsDisplay = true; lift() } } }
 
     init(symbol: String, title: String, hint: String, color: SPColorToken, shortcut: String?) {
         self.symbol = symbol; self.title = title; self.hint = hint; self.color = color; self.shortcut = shortcut
         super.init(frame: .zero)
+        wantsLayer = true
         setAccessibilityRole(.button)
         setAccessibilityLabel(title)
         setAccessibilityHelp(hint)
@@ -324,39 +418,49 @@ final class WelcomeTargetView: NSControl {
         if event.keyCode == 36 || event.keyCode == 49 { onPress?() } else { super.keyDown(with: event) }
     }
 
+    /// Hover grows the card a touch on a lively spring (scaled about its middle); Reduce Motion keeps it still.
+    private func lift() {
+        guard let layer, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
+        let scale: CGFloat = isHovered ? 1.03 : 1
+        var transform = CATransform3DMakeTranslation(bounds.width / 2, bounds.height / 2, 0)
+        transform = CATransform3DScale(transform, scale, scale, 1)
+        transform = CATransform3DTranslate(transform, -bounds.width / 2, -bounds.height / 2, 0)
+        let from = layer.presentation()?.transform ?? layer.transform
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer.transform = transform
+        CATransaction.commit()
+        layer.add(SPMotion.hoverSpring.animation("transform", from: NSValue(caTransform3D: from), to: NSValue(caTransform3D: transform)), forKey: "hover")
+    }
+
     override func draw(_ dirtyRect: NSRect) {
-        let card = bounds.insetBy(dx: 0.5, dy: 0.5).offsetBy(dx: 0, dy: isHovered ? -SPMetrics.Tile.hoverLift : 0)
+        let tint = color.color
+        let card = bounds.insetBy(dx: 0.75, dy: 0.75).offsetBy(dx: 0, dy: isHovered ? -SPMetrics.Tile.hoverLift : 0)
         let path = NSBezierPath(roundedRect: card, xRadius: SPMetrics.Welcome.targetRadius, yRadius: SPMetrics.Welcome.targetRadius)
         NSGraphicsContext.saveGraphicsState()
         let shadow = NSShadow()
-        shadow.shadowColor = NSColor.black.withAlphaComponent(isHovered ? 0.10 : 0.05)
-        shadow.shadowBlurRadius = isHovered ? 16 : 2
-        shadow.shadowOffset = NSSize(width: 0, height: isHovered ? -6 : -1)
+        shadow.shadowColor = isHovered ? tint.withAlphaComponent(0.25) : NSColor.black.withAlphaComponent(0.05)
+        shadow.shadowBlurRadius = isHovered ? 18 : 2
+        shadow.shadowOffset = NSSize(width: 0, height: isHovered ? -8 : -1)
         shadow.set()
         SPColor.controlBackground.color.setFill()
         path.fill()
         NSGraphicsContext.restoreGraphicsState()
-        path.lineWidth = 1
-        (isHovered ? SPColor.accent.color : SPColor.separator.color).setStroke()
+        path.lineWidth = isHovered ? 1.5 : 1
+        (isHovered ? tint : SPColor.separator.color).setStroke()
         path.stroke()
 
-        let tint = color.color
-        let circle = NSRect(x: card.minX + 14, y: card.minY + 16, width: 40, height: 40)
-        tint.withAlphaComponent(SPMetrics.Tile.iconCircleOpacity).setFill()
-        NSBezierPath(ovalIn: circle).fill()
-        if let image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
-            .withSymbolConfiguration(.init(pointSize: SPMetrics.Tile.symbolSize - 2, weight: .medium).applying(.init(paletteColors: [tint]))) {
-            let size = image.size
-            image.draw(in: NSRect(x: circle.midX - size.width / 2, y: circle.midY - size.height / 2, width: size.width, height: size.height))
-        }
+        let d = SPMetrics.Welcome.targetIcon
+        let icon = NSRect(x: card.minX + 14, y: card.minY + 16, width: d, height: d)
+        SPIcon.draw(symbol, color: tint, in: icon, radius: SPMetrics.Welcome.targetIconRadius, glyph: SPMetrics.Tile.symbolSize + 1)
         let name = NSAttributedString(string: title, attributes: [.font: SPFont.welcomeTarget.font(), .foregroundColor: SPColor.label.color])
-        name.draw(at: NSPoint(x: card.minX + 14, y: circle.maxY + 12))
+        name.draw(at: NSPoint(x: card.minX + 14, y: icon.maxY + 12))
         let paragraph = NSMutableParagraphStyle()
         paragraph.lineHeightMultiple = 1.15
         paragraph.lineBreakMode = .byWordWrapping
         let hintText = NSAttributedString(string: hint, attributes: [.font: SPFont.tileHint.font(), .foregroundColor: SPColor.secondaryLabel.color,
                                                                      .paragraphStyle: paragraph])
-        hintText.draw(with: NSRect(x: card.minX + 14, y: circle.maxY + 12 + 22, width: card.width - 28, height: card.maxY - circle.maxY - 34),
+        hintText.draw(with: NSRect(x: card.minX + 14, y: icon.maxY + 12 + 22, width: card.width - 28, height: card.maxY - icon.maxY - 34),
                       options: [.usesLineFragmentOrigin])
         if let shortcut {
             let key = NSAttributedString(string: shortcut, attributes: [.font: NSFont.systemFont(ofSize: 10), .foregroundColor: SPColor.tertiaryLabel.color])
@@ -416,7 +520,7 @@ final class RecentRowView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         if isHovered {
-            NSColor.labelColor.withAlphaComponent(0.04).setFill()
+            SPColor.accent.color.withAlphaComponent(0.08).setFill()
             NSBezierPath(roundedRect: bounds, xRadius: 8, yRadius: 8).fill()
         }
         let thumb = NSRect(x: 8 + 2, y: (bounds.height - 24) / 2, width: 20, height: 24)

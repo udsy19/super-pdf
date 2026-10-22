@@ -4,7 +4,7 @@ import PDFKit
 import SuperPDFCore
 
 /// One PDF's window (ux §2): the unified 52 pt toolbar, the sidebar, the document well with its PDFView, the 320 pt
-/// tool panel slot, the result banner under the toolbar, and the full-window page organiser. NSDocument owns it;
+/// tool panel slot, the result banner under the toolbar, and the full-window workspace (Combine, Rearrange; ux §6.2). NSDocument owns it;
 /// `Viewer` finds it by document.
 @MainActor
 public final class DocumentWindowController: NSWindowController, NSWindowDelegate {
@@ -19,7 +19,7 @@ public final class DocumentWindowController: NSWindowController, NSWindowDelegat
     let panelSlot = PanelSlotViewController()
     private(set) var sidebarItem: NSSplitViewItem!
     private(set) var panelItem: NSSplitViewItem!
-    private(set) var organiser: OrganiserViewController?
+    private(set) var workspace: WorkspaceViewController?
     lazy var pageActions = PageActions(document: handle, window: window, environment: { [unowned viewer] in viewer.environment })
     let toolbarController: DocumentToolbar
     lazy var readAloud = ReadAloudController(owner: self)
@@ -134,13 +134,13 @@ public final class DocumentWindowController: NSWindowController, NSWindowDelegat
     /// The thumbnails of pages whose annotations look different now get their pictures again.
     func annotationsChanged() {
         sidebar.thumbnails.refreshMarkup()
-        organiser?.grid.refreshMarkup()
+        workspace?.grid.reloadVisibleThumbnails()
     }
 
     // MARK: Pages and selection
 
-    /// Selected thumbnails (0-based), the organiser's while it shows.
-    public var selectedPages: [Int] { Array(organiser?.grid.selection ?? sidebar.thumbnails.selection) }
+    /// Selected thumbnails (0-based); the workspace's selected cards (or its previewed page) while it shows.
+    public var selectedPages: [Int] { workspace?.selectedPages ?? Array(sidebar.thumbnails.selection) }
 
     /// The page in view (0-based).
     public var currentPageIndex: Int { pdfView.currentPage.map { handle.pdf.index(for: $0) } ?? 0 }
@@ -164,7 +164,7 @@ public final class DocumentWindowController: NSWindowController, NSWindowDelegat
 
     /// Scrolling the document moves a single selection along, as Preview's sidebar does.
     private func pageInViewChanged() {
-        guard !followingSelection, organiser == nil else { return }
+        guard !followingSelection, workspace == nil else { return }
         let thumbnails = sidebar.thumbnails
         let selection = thumbnails.selection
         let index = currentPageIndex
@@ -179,25 +179,28 @@ public final class DocumentWindowController: NSWindowController, NSWindowDelegat
         let selection = pageActions.pendingSelection
         pageActions.pendingSelection = nil
         sidebar.thumbnails.reload(selecting: selection)
-        organiser?.reload(selecting: selection)
+        workspace?.reload(selecting: selection)
         sidebar.pagesChanged()
         toolbarController.documentStateChanged()
         updateTitle()
     }
 
-    /// Saved: pages mixed in from other files lose their colour bars (ux §6.2 "until saved").
+    /// Saved: pages mixed in from other files become the document's own (ux §6.2 "until saved").
     func documentSaved() {
         pageActions.clearOrigins()
-        organiser?.reload(selecting: nil)
+        workspace?.reload(selecting: nil)
         updateTitle()
     }
 
     // MARK: Title
 
-    /// The title bar's own title and subtitle with the proxy icon (representedURL), as Preview shows them.
+    /// The title bar's own title and subtitle with the proxy icon (representedURL), as Preview shows them; the workspace
+    /// counts its files too ("4 files · 17 pages").
     func updateTitle() {
         window?.title = handle.url?.lastPathComponent ?? handle.displayName
-        window?.subtitle = ViewerStrings.pages(handle.pageCount) + (handle.state.isEdited ? " " + ViewerStrings.Toolbar.edited : "")
+        var count = ViewerStrings.pages(handle.pageCount)
+        if let workspace, workspace.fileCount > 1 { count = ViewerStrings.Workspace.subtitle(files: workspace.fileCount, pages: handle.pageCount) }
+        window?.subtitle = count + (handle.state.isEdited ? " " + ViewerStrings.Toolbar.edited : "")
         window?.representedURL = handle.url
     }
 
@@ -209,7 +212,7 @@ public final class DocumentWindowController: NSWindowController, NSWindowDelegat
     // MARK: Sidebar
 
     func showSidebar(_ mode: SidebarMode) {
-        if organiser != nil { hideOrganiser() }
+        if workspace != nil { hideWorkspace() }
         if sidebarItem.isCollapsed { setSidebarVisible(true) }
         if mode != .search { modeBeforeSearch = mode }
         sidebar.show(mode)
@@ -297,28 +300,45 @@ public final class DocumentWindowController: NSWindowController, NSWindowDelegat
         root.showBanner(view, animated: environment.moves)
     }
 
-    // MARK: Organiser (ux §6.2)
+    // MARK: Workspace (ux §6.2)
 
-    func showOrganiser(adding files: [URL]) {
-        if organiser == nil {
-            let organiser = OrganiserViewController(owner: self)
-            self.organiser = organiser
-            root.setContent(organiser)
-            window?.toolbar = toolbarController.makeOrganiserToolbar()
-            organiser.reload(selecting: sidebar.thumbnails.selection)
+    /// Shows the workspace in place of the sidebar and the document (files mixed in at the end, converting first).
+    func showWorkspace(adding files: [URL]) {
+        if workspace == nil {
+            let workspace = WorkspaceViewController(owner: self)
+            self.workspace = workspace
+            root.setContent(workspace)
+            window?.toolbar = toolbarController.makeWorkspaceToolbar()
+            workspace.reload(selecting: sidebar.thumbnails.selection, animated: false)
+            updateTitle()
         }
         if !files.isEmpty { pageActions.insertFiles(files, atGap: handle.pageCount, tagged: true) }
     }
 
-    func hideOrganiser() {
-        guard let organiser else { return }
-        let selection = organiser.grid.selection
-        organiser.removeFromParent()
-        self.organiser = nil
+    /// Back to the document with nothing written (Esc, the View menu); the selected cards' pages stay selected.
+    func hideWorkspace() {
+        guard let workspace else { return }
+        let selection = IndexSet(workspace.selectedPages)
+        pageActions.onPendingChange = nil
+        workspace.removeFromParent()
+        self.workspace = nil
         root.setContent(split)
         window?.toolbar = toolbarController.makeToolbar(persists: environment.persistsWindowState)
         sidebar.thumbnails.reload(selecting: selection)
         if let first = selection.first { go(toPage: first) }
+        updateTitle()
+    }
+
+    /// Finish: back to the document, with a banner that says what was made and offers to save (ux §6.2, §7.3).
+    func finishWorkspace() {
+        guard let workspace else { return }
+        let files = workspace.fileCount, edited = handle.state.isEdited
+        hideWorkspace()
+        if handle.state.origin == .createdHere && files > 1 {
+            showBanner(Strings.Banner.combined(files: files, pages: handle.pageCount))
+        } else if edited {
+            showBanner(Strings.Banner.arranged(pages: handle.pageCount))
+        }
     }
 
     // MARK: View state (features §2.1: remembered per document, in the file's extended attribute)
@@ -390,7 +410,7 @@ public final class DocumentWindowController: NSWindowController, NSWindowDelegat
     }
 }
 
-/// The window's content: the result banner's slot under the toolbar, full width, over the split view or the organiser.
+/// The window's content: the result banner's slot under the toolbar, full width, over the split view or the workspace.
 @MainActor
 final class RootViewController: NSViewController {
     private let bannerSlot = NSView()

@@ -19,4 +19,6 @@ enum ToolsKitStrings {
     /// The save panel's prompt is the primary button's verb without the ellipsis.
     static func savePrompt(_ title: String) -> String { title.hasSuffix("…") ? String(title.dropLast()) : title }
     static let progressSeparator = " · "
+    /// What a screen reader calls the row of section chips in the Tools sheet.
+    static let sections = "Sections"
 }

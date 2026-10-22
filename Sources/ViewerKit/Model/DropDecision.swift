@@ -4,7 +4,7 @@ import SuperPDFCore
 import UniformTypeIdentifiers
 
 // What a drop does, decided in one place for every target of ux §3 (the window, the sidebar between thumbnails, the
-// organiser grid, the welcome window). The views only describe what is being dragged and where; this table answers
+// workspace, the welcome window). The views only describe what is being dragged and where; this table answers
 // with the outcome and the two or three words the target shows ("Add 3 pages here").
 
 /// A file being dragged in, with the facts the decision needs (read once per drag).
@@ -38,8 +38,8 @@ public enum DropZone: Hashable, Sendable {
     case pageArea
     /// The thumbnail sidebar, in the gap before this page (`pageCount` is the end).
     case sidebarGap(Int)
-    /// The organiser grid, in the gap before this page, or the "+ Add pages" tile (`pageCount`).
-    case organiserGap(Int)
+    /// The workspace (ux §6.2), in the gap before this page (`pageCount` is the end and the add card).
+    case workspaceGap(Int)
     /// Anywhere in the welcome window.
     case welcome
 }
@@ -59,7 +59,7 @@ public enum DropOutcome: Hashable, Sendable {
     case refuse(String)
     /// Open each file in its own window or tab (PDFs directly, others converted first).
     case open([URL])
-    /// Several files dropped on the welcome window: the organiser in Combine mode (ux §6.1, §6.2).
+    /// Several files dropped on the welcome window: the workspace with one card per file (ux §6.1, §6.2).
     case combine([URL])
     /// Insert the files' pages before this page (converting first when needed).
     case insertFiles([URL], atGap: Int)
@@ -96,7 +96,7 @@ public struct DropDecision: Hashable, Sendable {
             guard !indices.isEmpty else { return DropDecision(.none) }
             let gap: Int
             switch zone {
-            case .sidebarGap(let g), .organiserGap(let g): gap = g
+            case .sidebarGap(let g), .workspaceGap(let g): gap = g
             case .pageArea, .welcome: return DropDecision(.none)
             }
             if source == document {
@@ -128,7 +128,7 @@ public struct DropDecision: Hashable, Sendable {
         case .welcome:
             return urls.count == 1 ? DropDecision(.open(urls), label: Strings.Drop.open)
                 : DropDecision(.combine(urls), label: ViewerStrings.Welcome.combine)
-        case .sidebarGap(let gap), .organiserGap(let gap):
+        case .sidebarGap(let gap), .workspaceGap(let gap):
             if isLocked { return DropDecision(.refuse(Strings.Errors.passwordPrompt)) }
             let counts = files.map(\.pageCount)
             let label = counts.contains(nil) ? Strings.Drop.addHere : Strings.Drop.addPages(counts.compactMap { $0 }.reduce(0, +))

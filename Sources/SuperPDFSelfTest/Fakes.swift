@@ -93,6 +93,8 @@ final class FakeDocuments: DocumentManaging {
     var applied: [(ToolID, ToolResult)] = []
     var recentDocuments: [RecentDocument] = []
     var viewStates: [URL: DocumentViewState] = [:]
+    /// New documents get their window at once, as NSDocument makes them (the workspace's Combine).
+    var makesWindows = false
 
     func open(_ url: URL) async throws -> DocumentHandle {
         if let open = openDocuments.first(where: { $0.url == url }) { return open }
@@ -107,6 +109,7 @@ final class FakeDocuments: DocumentManaging {
         guard let pdf = PDFDocument(data: data) else { throw FakeError() }
         let handle = DocumentHandle(url: nil, displayName: name, pdf: pdf, state: DocumentState(origin: .createdHere), undoManager: makeUndoManager())
         openDocuments.append(handle)
+        if makesWindows { _ = Services.viewer?.makeWindowController(for: handle) }
         subject.send(.opened(handle.id))
         return handle
     }
@@ -215,10 +218,38 @@ final class FakeRender: Rendering {
 final class FakePages: PageEditing {
     var performed: [PageOperation] = []
 
-    /// Rotation and deletion really happen (so undo can be checked); the rest are recorded.
+    /// Rotation, deletion, moves, duplicates, insertions and reversal really happen (so undo and the views can be checked);
+    /// the rest are recorded.
     func perform(_ operation: PageOperation, in document: DocumentHandle) async throws -> UndoGroup {
         performed.append(operation)
+        let pdf = document.pdf
+        let before = (0..<pdf.pageCount).compactMap { pdf.page(at: $0) }
+        func arrange(_ name: String, _ after: [PDFPage]) -> UndoGroup {
+            let set = { (pages: [PDFPage]) in
+                while pdf.pageCount > 0 { pdf.removePage(at: pdf.pageCount - 1) }
+                for page in pages { pdf.insert(page, at: pdf.pageCount) }
+            }
+            set(after)
+            return UndoGroup(name, undo: { set(before) }, redo: { set(after) })
+        }
         switch operation {
+        case .move(let pages, let to):
+            let moving = Set(pages)
+            var rest = before.enumerated().filter { !moving.contains($0.offset) }.map(\.element)
+            rest.insert(contentsOf: pages.sorted().map { before[$0] }, at: min(max(to, 0), rest.count))
+            return arrange("Move Pages", rest)
+        case .duplicate(let pages):
+            var after = before
+            after.insert(contentsOf: pages.sorted().compactMap { before[$0].copy() as? PDFPage }, at: (pages.max() ?? 0) + 1)
+            return arrange("Duplicate Pages", after)
+        case .insertFile(let source, let indices, let at):
+            guard let other = PDFDocument(data: try source.bytes()) else { throw PageEditError.pagesOutOfRange }
+            let wanted = indices.isEmpty ? Array(0..<other.pageCount) : indices
+            var after = before
+            after.insert(contentsOf: wanted.compactMap { other.page(at: $0)?.copy() as? PDFPage }, at: min(at, after.count))
+            return arrange("Insert Pages", after)
+        case .reverse:
+            return arrange("Reverse Pages", before.reversed())
         case .rotate(let pages, let turns):
             let apply = { (sign: Int) in
                 for index in pages { document.pdf.page(at: index).map { $0.rotation = (($0.rotation + sign * turns * 90) % 360 + 360) % 360 } }
@@ -706,6 +737,8 @@ final class FakeViewer: ViewerPresenting {
     func showBanner(_ banner: ResultBanner, in document: DocumentHandle) { banners.append(banner) }
     func showSidebar(_ mode: SidebarMode, in document: DocumentHandle) { sidebarModes[document.id] = mode }
     func showOrganiser(for document: DocumentHandle, adding files: [URL]) {}
+    var combined: [[URL]] = []
+    func combine(_ files: [URL]) { combined.append(files) }
     func showWelcome() { welcomeShown += 1 }
     var cropHandles: [UUID: CropHandles] = [:]
     func showCropHandles(_ handles: CropHandles?, in document: DocumentHandle) { cropHandles[document.id] = handles }

@@ -1,0 +1,31 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Super PDF — Workspace, pages</title><link rel="stylesheet" href="shared.css"></head>
+<body><script src="shared.js"></script>
+<script>
+// Pages mode (ux §6.2): every page of every file, each with its file's pill. A page of “Floor plan.png” is being dragged:
+// its slot has closed, and the pages after the pointer have sprung aside to open the dashed hole where it will land.
+const S = SP;
+const x = (c) => 116 + c * 180, y = (r) => 24 + r * 238;
+const L = "Lease ag…ment.pdf";   // the pill truncates in the middle, as the app does
+const items = [
+  { name: L, color: "sky", kind: "text", n: 1 },
+  { name: L, color: "sky", kind: "img", n: 2, sel: true },
+  { hole: true },
+  { name: L, color: "sky", kind: "text", n: 3 },
+  { name: L, color: "sky", kind: "text", n: 4, hover: true },
+  { name: "Budget 2026.xlsx", color: "peach", kind: "table", n: 5 },
+  { name: "Budget 2026.xlsx", color: "peach", kind: "table", n: 6 },
+  { name: "Schedule.pdf", color: "mint", kind: "letter", n: 7 },
+  { name: "Schedule.pdf", color: "mint", kind: "letter", n: 8 },
+  { name: "Schedule.pdf", color: "mint", kind: "letter", n: 9 },
+  { name: L, color: "sky", kind: "text", n: 10 },
+  { name: L, color: "sky", kind: "text", n: 11 },
+];
+const cards = items.map((it, i) => it.hole
+  ? S.pageCard({ x: x(i % 5), y: y(Math.floor(i / 5)), cls: "hole" })
+  : S.pageCard({ ...it, x: x(i % 5), y: y(Math.floor(i / 5)) })).join("");
+const drag = S.pageCard({ name: "Floor plan.png", color: "pink", kind: "photo", landscape: true, n: 12, x: 400, y: 70, cls: "dragimg" });
+const soft = S.inserter(x(4) - 16, y(1) + 10 + 75);
+const full = `<div class="ws"><div class="grid-w">${cards}${drag}${soft}</div>
+  ${S.wsStatus("<b>17 pages</b> from 4 files · 1 selected", "Drag to reorder · Space to preview · Drop more files anywhere")}</div>`;
+S.render({ titlebarHTML: S.wsToolbar({ mode: "pages", title: "Combined", subtitle: "4 files · 17 pages" }), full });
+</script></body></html>

@@ -1,8 +1,8 @@
 import Foundation
 import SuperPDFCore
 
-/// A file whose pages were mixed into the document (organiser drop, Combine from the welcome window). Its pages keep a
-/// 3 pt bar in the file's colour until the document is saved (ux §6.2).
+/// A file whose pages were mixed into the document (a drop in the workspace, Combine from the welcome window). Until the
+/// document is saved its pages keep the file's name and colour: its card and pill in the workspace (ux §6.2).
 public struct PageOrigin: Hashable, Sendable {
     public var fileName: String
     /// Index into `PageOrigin.palette`.
@@ -10,12 +10,12 @@ public struct PageOrigin: Hashable, Sendable {
 
     public init(fileName: String, colorIndex: Int) { self.fileName = fileName; self.colorIndex = colorIndex }
 
-    /// The bar colours, in the order files arrive (organizer.png: the first mixed-in file is teal).
-    public static let palette: [SPColorToken] = [SPColor.categoryTeal, SPColor.categoryOrange, SPColor.categoryPurple,
-                                                 SPColor.categoryGreen, SPColor.categoryRed, SPColor.categoryBrown]
+    /// The pill colours, in the order files arrive; the document's own pages take the first.
+    public static var palette: [SPPill] { SPColor.pills }
+    public var pill: SPPill { Self.palette[colorIndex % Self.palette.count] }
 }
 
-/// The page list the thumbnail sidebar and the page organiser show, their selection, and the page edits their gestures
+/// The page list the thumbnail sidebar and the workspace show, their selection, and the page edits their gestures
 /// make (ux §3, §6.2, §6.3). Pure value: the views keep one, ask it for the `PageOperation` a gesture means, run it
 /// through `Services.pages`, then apply the same change here so selection follows the pages.
 public struct PageGridModel: Equatable, Sendable {
@@ -91,9 +91,11 @@ public struct PageGridModel: Equatable, Sendable {
         select(IndexSet(integersIn: at..<at + keys.count))
     }
 
-    /// The colour index the next mixed-in file gets.
+    /// The colour index the next mixed-in file gets: the first one no file uses yet (the document's own pages use the
+    /// first colour).
     public var nextOriginColor: Int {
-        let used = Set(entries.compactMap { $0.origin?.colorIndex })
+        var used = Set(entries.compactMap { $0.origin?.colorIndex })
+        if entries.contains(where: { $0.origin == nil }) { used.insert(0) }
         return (0...).first { !used.contains($0) }! % PageOrigin.palette.count
     }
 
@@ -118,23 +120,5 @@ public struct PageGridModel: Equatable, Sendable {
     /// ⌘L is −1 (counter-clockwise), ⌘R +1 (Preview's keys).
     public func rotation(_ pages: [Int], quarterTurns: Int) -> PageOperation {
         .rotate(Array(Set(pages.filter { entries.indices.contains($0) })).sorted(), quarterTurns: quarterTurns)
-    }
-
-    // MARK: Status
-
-    /// Mixed-in files in order of their first page, with how many pages each still has here.
-    public var files: [(name: String, pages: Int)] {
-        var order: [PageOrigin] = []
-        var counts: [PageOrigin: Int] = [:]
-        for origin in entries.compactMap(\.origin) {
-            if counts[origin] == nil { order.append(origin) }
-            counts[origin, default: 0] += 1
-        }
-        return order.map { ($0.fileName, counts[$0]!) }
-    }
-
-    /// The organiser's status line: "12 pages · 1 selected · 3 pages from “Inventory.pdf”".
-    public var statusLine: String {
-        ViewerStrings.Organiser.status(pages: entries.count, selected: selection.count, files: files)
     }
 }

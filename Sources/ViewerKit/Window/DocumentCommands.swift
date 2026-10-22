@@ -44,11 +44,13 @@ extension DocumentWindowController: MenuCommandResponding, NSMenuItemValidation 
         case .highlightsAndNotes: showSidebar(.highlightsAndNotes)
         case .bookmarks: showSidebar(.bookmarks)
         case .attachments: showSidebar(.attachments)
-        case .pageOrganiser, .contactSheet: organiser == nil ? showOrganiser(adding: []) : hideOrganiser()
+        case .pageOrganiser, .contactSheet: workspace == nil ? showWorkspace(adding: []) : hideWorkspace()
         case .continuousScroll: setDisplayMode(.continuousScroll)
         case .singlePage: setDisplayMode(.singlePage)
         case .twoPages: setDisplayMode(.twoPages)
         case .darkAppearanceForPDF: setDarkPDF(!darkPDF)
+        case .zoomIn where workspace != nil: workspace?.zoom(by: 1.15)
+        case .zoomOut where workspace != nil: workspace?.zoom(by: 1 / 1.15)
         case .actualSize: fitsPage = false; pdfView.scaleFactor = 1
         case .zoomToFit: fitsPage = true
         case .zoomIn: fitsPage = false; pdfView.zoomIn(nil)
@@ -83,23 +85,24 @@ extension DocumentWindowController: MenuCommandResponding, NSMenuItemValidation 
 
     /// Enabled state and check marks; nil for commands the window doesn't own.
     func validate(_ command: MenuCommand, _ item: NSMenuItem) -> Bool? {
-        let mode = organiser == nil && !sidebarItem.isCollapsed ? sidebar.mode : nil
+        let mode = workspace == nil && !sidebarItem.isCollapsed ? sidebar.mode : nil
         func check(_ on: Bool) { item.state = on ? .on : .off }
         switch command {
         case .hideSidebar:
             item.title = sidebarItem.isCollapsed ? ViewerStrings.Toolbar.showSidebar : ViewerStrings.Toolbar.hideSidebar
-            return organiser == nil
+            return workspace == nil
         case .thumbnails: check(mode == .thumbnails); return true
         case .tableOfContents: check(mode == .tableOfContents); return true
         case .highlightsAndNotes: check(mode == .highlightsAndNotes); return Services.markup != nil
         case .bookmarks: check(mode == .bookmarks); return true
         case .attachments: check(mode == .attachments); return true
-        case .pageOrganiser, .contactSheet: check(organiser != nil); return true
-        case .continuousScroll: check(displayMode == .continuousScroll); return organiser == nil
-        case .singlePage: check(displayMode == .singlePage); return organiser == nil
-        case .twoPages: check(displayMode == .twoPages); return organiser == nil
+        case .pageOrganiser, .contactSheet: check(workspace != nil); return true
+        case .continuousScroll: check(displayMode == .continuousScroll); return workspace == nil
+        case .singlePage: check(displayMode == .singlePage); return workspace == nil
+        case .twoPages: check(displayMode == .twoPages); return workspace == nil
         case .darkAppearanceForPDF: check(darkPDF); return true
-        case .actualSize, .zoomToFit, .zoomIn, .zoomOut, .slideshow: return organiser == nil
+        case .zoomIn, .zoomOut: return true
+        case .actualSize, .zoomToFit, .slideshow: return workspace == nil
         case .showMarkupToolbar:
             item.title = markupBarVisible ? "Hide Markup Toolbar" : "Show Markup Toolbar"
             return Services.markup != nil
@@ -137,7 +140,7 @@ extension DocumentWindowController: MenuCommandResponding, NSMenuItemValidation 
             return
         }
         if sidebar.mode != .search { modeBeforeSearch = sidebar.mode }
-        if organiser != nil { hideOrganiser() }
+        if workspace != nil { hideWorkspace() }
         if sidebarItem.isCollapsed { setSidebarVisible(true) }
         sidebar.show(.search)
         sidebar.search.search(query)
@@ -184,7 +187,7 @@ extension DocumentWindowController: MenuCommandResponding, NSMenuItemValidation 
         insert.submenu = addPagesMenu(atGap: (pages.last ?? currentPageIndex) + 1, menuTitles: true)
         insert.isEnabled = canChange
         menu.addItem(insert)
-        add(ViewerStrings.PageMenu.duplicate, enabled: canChange) { [weak self] in self?.pageActions.duplicate(pages) }
+        add(ViewerStrings.PageMenu.duplicate, enabled: canChange) { [weak self] in self?.pageActions.duplicate(pages, asNewFile: false) }
         menu.addItem(.separator())
         add(ViewerStrings.PageMenu.blackOut(count)) { [weak self] in
             guard let self else { return }
@@ -198,7 +201,7 @@ extension DocumentWindowController: MenuCommandResponding, NSMenuItemValidation 
         return menu
     }
 
-    /// From file… · Blank page · From scanner… · From iPhone… (ux §2.1 sidebar [+], organiser tile, Insert Page ▸).
+    /// From file… · Blank page · From scanner… · From iPhone… (ux §2.1 sidebar [+], the workspace's Add and "+", Insert Page ▸).
     func addPagesMenu(atGap gap: Int, menuTitles: Bool = false) -> NSMenu {
         let menu = NSMenu()
         let titles = menuTitles
@@ -229,7 +232,7 @@ extension DocumentWindowController: MenuCommandResponding, NSMenuItemValidation 
     func addPagesFromFile(atGap gap: Int) {
         Task {
             let urls = await environment.chooseFiles([], true, window)
-            if !urls.isEmpty { pageActions.insertFiles(urls, atGap: gap, tagged: organiser != nil) }
+            if !urls.isEmpty { pageActions.insertFiles(urls, atGap: gap, tagged: workspace != nil) }
         }
     }
 
@@ -238,7 +241,7 @@ extension DocumentWindowController: MenuCommandResponding, NSMenuItemValidation 
         let folder = SuperPDFPaths.ensure(SuperPDFPaths.work.appendingPathComponent(UUID().uuidString, isDirectory: true))
         let file = folder.appendingPathComponent(pageActions.extractName(pages))
         guard (try? data.write(to: file)) != nil else { return }
-        let anchor = organiser?.grid.collectionView ?? sidebar.thumbnails.collectionView
+        let anchor = workspace?.grid ?? sidebar.thumbnails.collectionView
         environment.share([file], anchor)
     }
 
@@ -314,7 +317,7 @@ extension DocumentWindowController: MenuCommandResponding, NSMenuItemValidation 
     }
 
     override public func cancelOperation(_ sender: Any?) {
-        if reader != nil { toggleReader() } else if organiser != nil { hideOrganiser() }
+        if reader != nil { toggleReader() } else if let workspace { workspace.preview != nil ? workspace.closePreview() : hideWorkspace() }
     }
 }
 

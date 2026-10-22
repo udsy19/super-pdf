@@ -2,6 +2,17 @@
 
 All notable changes to Super PDF. Versions follow [Semantic Versioning](https://semver.org).
 
+## [Unreleased]
+
+- A cheerful look: one bright colour per section on every tool's icon, section chips in the Tools sheet, a colour wash
+  behind each panel's header, a friendlier welcome window, springy hovers, and a success check that pops in with a
+  little confetti (all of it calm under Reduce Motion).
+- The workspace for Combine and Rearrange: files (of any kind, converting on their own cards) or pages as big cards on a
+  soft canvas, each file in its own pastel pill; drag to reorder while the others make room, a "+" between cards, a
+  hover toolbar to preview, rotate, duplicate or delete, select all, sort, grid or list, a big preview with ‹ › and
+  Finish. Several files dropped on the app or the welcome window open it.
+- The page organiser is now the workspace (View › Page Organiser, ⌥⌘6, still opens it).
+
 ## [1.0.0] - 2026-10-22
 
 First release.

@@ -53,7 +53,7 @@ public enum ToolSection: String, Codable, CaseIterable, Sendable {
         }
     }
 
-    /// The category colour of its tiles' icon circles and panel header icons (ux §2.3).
+    /// The brand colour of its tiles' icons, its chip and header in the sheet, and its panels' header icon and wash (ux §2.3).
     public var color: SPColorToken {
         switch self {
         case .pages: SPColor.categoryBlue
@@ -63,7 +63,21 @@ public enum ToolSection: String, Codable, CaseIterable, Sendable {
         case .signAndFill: SPColor.categoryPurple
         case .protect: SPColor.categoryRed
         case .fixAndCheck: SPColor.categoryTeal
-        case .scan: SPColor.categoryBrown
+        case .scan: SPColor.categoryPink
+        }
+    }
+
+    /// The white glyph on the section's chip and header in the Tools sheet (ux §4).
+    public var symbol: String {
+        switch self {
+        case .pages: "doc.on.doc.fill"
+        case .convert: "arrow.triangle.2.circlepath"
+        case .edit: "pencil"
+        case .markUp: "highlighter"
+        case .signAndFill: "signature"
+        case .protect: "lock.fill"
+        case .fixAndCheck: "wrench.and.screwdriver.fill"
+        case .scan: "viewfinder"
         }
     }
 }

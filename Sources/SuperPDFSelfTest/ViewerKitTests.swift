@@ -2,19 +2,23 @@ import AppKit
 import CoreText
 import PDFKit
 import SuperPDFCore
+import UniformTypeIdentifiers
 import ToolsKit
 @testable import ViewerKit
 
-// ViewerKit's checks (WP4): the drop-target table of ux §3, the page grid model behind the sidebar and the organiser
+// ViewerKit's checks (WP4): the drop-target table of ux §3, the page grid model behind the sidebar and the workspace
 // (reorder, multi-select, files mixed in), read-aloud sentences, recent-file dates, the window's metrics against ux §2.1
 // and the mockups, page edits through the thumbnails and the menus, the in-window password prompt, ViewerKit's two
-// tiles, offscreen renders of the main window, the result banner, the organiser and the welcome window, and the
+// tiles, the workspace (Combine with files converting on their cards, select, rotate, duplicate, sort, preview, Finish),
+// offscreen renders of the main window, the result banner, the workspace and the welcome window, and the
 // performance budgets on a 500-page document. Windows are made but never shown; nothing is spoken; no panel opens.
 //
 // Renders go to the scratch folder, or to $SUPERPDF_RENDERS when it is set (to look at them next to docs/mockups).
 func registerViewerKitTests() {
     SelfTest.cases.append(("ViewerKit.dropDecisions", { viewerKitDropDecisions() }))
     SelfTest.cases.append(("ViewerKit.pageGridModel", { viewerKitPageGridModel() }))
+    SelfTest.cases.append(("ViewerKit.workspaceModel", { viewerKitWorkspaceModel() }))
+    SelfTest.cases.append(("ViewerKit.workspace", { viewerKitWorkspace() }))
     SelfTest.cases.append(("ViewerKit.sentences", { viewerKitSentences() }))
     SelfTest.cases.append(("ViewerKit.recentDates", { viewerKitRecentDates() }))
     SelfTest.cases.append(("ViewerKit.window", { viewerKitWindow() }))
@@ -146,7 +150,7 @@ private func viewerKitDropDecisions() {
         (.files([word, pdf]), .pageArea, false, false, .open([word.url, pdf.url]), "Open"),
         // Between thumbnails: the file's pages go in there, with the count when it's known.
         (.files([pdf]), .sidebarGap(2), false, false, .insertFiles([pdf.url], atGap: 2), "Add 3 pages here"),
-        (.files([pdf, pdf2]), .organiserGap(12), false, false, .insertFiles([pdf.url, pdf2.url], atGap: 12), "Add 5 pages here"),
+        (.files([pdf, pdf2]), .workspaceGap(12), false, false, .insertFiles([pdf.url, pdf2.url], atGap: 12), "Add 5 pages here"),
         (.files([word]), .sidebarGap(0), false, false, .insertFiles([word.url], atGap: 0), "Add here"),
         // Welcome window: one file opens, several combine.
         (.files([pdf]), .welcome, false, false, .open([pdf.url]), "Open"),
@@ -159,11 +163,11 @@ private func viewerKitDropDecisions() {
         // Thumbnails within the window reorder; dropping them back where they are does nothing.
         (.pages(from: me, indices: [4, 2]), .sidebarGap(0), false, false, .movePages([2, 4], toGap: 0), nil),
         (.pages(from: me, indices: [2, 3]), .sidebarGap(2), false, false, .none, nil),
-        (.pages(from: me, indices: [2, 3]), .organiserGap(4), false, false, .none, nil),
-        (.pages(from: me, indices: [2, 3]), .organiserGap(5), false, false, .movePages([2, 3], toGap: 5), nil),
+        (.pages(from: me, indices: [2, 3]), .workspaceGap(4), false, false, .none, nil),
+        (.pages(from: me, indices: [2, 3]), .workspaceGap(5), false, false, .movePages([2, 3], toGap: 5), nil),
         // From another window: copy, ⌥ moves.
         (.pages(from: other, indices: [0, 1]), .sidebarGap(3), false, false, .copyPages(from: other, [0, 1], toGap: 3, removingFromSource: false), "Add 2 pages here"),
-        (.pages(from: other, indices: [0]), .organiserGap(3), false, true, .copyPages(from: other, [0], toGap: 3, removingFromSource: true), "Add 1 page here"),
+        (.pages(from: other, indices: [0]), .workspaceGap(3), false, true, .copyPages(from: other, [0], toGap: 3, removingFromSource: true), "Add 1 page here"),
         (.pages(from: other, indices: [0]), .pageArea, false, false, .none, nil),
         // Text on a page: a new text box.
         (.text("Approved"), .pageArea, false, false, .addText("Approved"), "Add text"),
@@ -186,7 +190,7 @@ private func viewerKitPageGridModel() {
     check(PageGridModel.destination(of: [2], toGap: 0) == 0 && PageGridModel.destination(of: [2], toGap: 5) == 4
           && PageGridModel.destination(of: [1, 3], toGap: 5) == 3, "destination counts pages taken out before the gap")
 
-    // Reorder one page: page 7 (index 6) before page 3 (organizer.png's drag).
+    // Reorder one page: page 7 (index 6) before page 3.
     model.select([6])
     check(model.move([6], toGap: 2) == .move([6], to: 2), "drag before page 3")
     let key = model.entries[6].key
@@ -203,27 +207,73 @@ private func viewerKitPageGridModel() {
     model.select(IndexSet(integersIn: 0..<20))
     check(model.selection.count == 12, "selection stays inside the pages")
 
-    // Insert a second file: its pages take its colour; the status line names it.
+    // Insert a second file: its pages take the next colour (the document's own pages have the first).
     let inventory = PageOrigin(fileName: "Inventory.pdf", colorIndex: model.nextOriginColor)
-    check(inventory.colorIndex == 0 && PageOrigin.palette[0] == SPColor.categoryTeal, "the first mixed-in file is teal")
+    check(inventory.colorIndex == 1 && inventory.pill == SPColor.pills[1], "the first mixed-in file is pink, after the document's sky")
     check(model.insertion(of: .file(URL(fileURLWithPath: "/tmp/Inventory.pdf")), atGap: 7)
           == .insertFile(.file(URL(fileURLWithPath: "/tmp/Inventory.pdf")), pages: [], at: 7), "insert before page 8")
     model.applyInsert(keys: [100, 101, 102], atGap: 7, origin: inventory)
     check(model.count == 15 && model.entries[7...9].allSatisfy { $0.origin == inventory } && model.selection == [7, 8, 9],
           "three pages from the file, selected")
-    model.select([2])
-    check(model.statusLine == "15 pages · 1 selected · 3 pages from “Inventory.pdf”", "status line (\(model.statusLine))")
-    check(model.nextOriginColor == 1, "a second file gets the next colour")
+    check(model.nextOriginColor == 2, "a second file gets the next colour")
 
     // Delete, rotate; never the last page.
     check((try? model.deletion([7, 8])) == .delete([7, 8]), "delete two")
     model.applyDelete([7, 8])
-    check(model.count == 13 && model.files.first?.pages == 1, "one Inventory page left")
+    check(model.count == 13 && model.entries.filter { $0.origin == inventory }.count == 1, "one Inventory page left")
     check(model.rotation([3, 1, 3], quarterTurns: -1) == .rotate([1, 3], quarterTurns: -1), "rotate left, sorted, once each")
     let single = PageGridModel(pageCount: 1)
     do { _ = try single.deletion([0]); check(false, "the last page can't go") } catch {
         check((error as? PageEditError) == .lastPage && error.localizedDescription == "A PDF needs at least one page.", "says why")
     }
+    let combined = PageGridModel(entries: [PageGridModel.Entry(key: 1, origin: PageOrigin(fileName: "A.pdf", colorIndex: 0))])
+    check(combined.nextOriginColor == 1, "a combined document's files take the colours in turn")
+}
+
+// MARK: - The workspace model (ux §6.2)
+
+@MainActor
+private func viewerKitWorkspaceModel() {
+    let lease = PageOrigin(fileName: "Lease agreement.pdf", colorIndex: 0), plan = PageOrigin(fileName: "Floor plan.png", colorIndex: 1)
+    let schedule = PageOrigin(fileName: "Schedule.pdf", colorIndex: 3)
+    // Lease (3 pages), the plan (1), Schedule (2), then a page of the lease moved to the end.
+    let origins = [lease, lease, lease, plan, schedule, schedule, lease]
+    var model = WorkspaceModel(entries: origins.enumerated().map { PageGridModel.Entry(key: 10 + $0.offset, origin: $0.element) }, documentName: "Combined")
+    check(model.files.map(\.origin) == [lease, plan, schedule] && model.files.map(\.pages) == [[0, 1, 2, 6], [3], [4, 5]],
+          "files in the order of their first page, with all their pages")
+    let files = model.items(.files)
+    check(files.count == 4 && files.last == .add && files[0] == .file(lease, pages: [0, 1, 2, 6]), "a card per file and the add card")
+    check(model.items(.pages).count == 8 && model.items(.pages)[3] == .page(3, key: 13, file: plan), "a card per page, each with its file")
+    check(model.pages(of: [.file(plan), .file(schedule)], in: .files) == [3, 4, 5], "two file cards mean their pages")
+
+    // Gaps between cards are gaps between pages: before the card's first page, or the end.
+    check(model.pageGap(forCardGap: 1, in: .files) == 3 && model.pageGap(forCardGap: 3, in: .files) == 7, "a file card's gap")
+    check(model.pageGap(forCardGap: 1, in: .files, excluding: [.file(plan)]) == 4, "the dragged card is left out")
+    check(model.pageGap(forCardGap: 2, in: .pages) == 2 && model.pageGap(forCardGap: 7, in: .pages) == 7, "a page card's gap")
+
+    // A file converting before page 4 waits as a card there, in both views.
+    model.pending = [PendingFile(name: "Budget.xlsx", colorIndex: 4, gap: 4, fraction: 0.5)]
+    if case .pending(let file) = model.items(.files)[2] { check(file.name == "Budget.xlsx", "converting card before Schedule") } else {
+        check(false, "converting card before Schedule (\(model.items(.files).map(\.id)))")
+    }
+    if case .pending = model.items(.pages)[4] {} else { check(false, "converting card before page 5 in Pages") }
+    check(model.items(.files).filter(\.isContent).count == 3 && model.pageGap(forCardGap: 2, in: .files) == 4,
+          "converting cards aren't counted in gaps")
+    check(model.statusLine(.files, selectedCards: 1) == "4 files · 7 pages · 1 selected", "Files status (\(model.statusLine(.files, selectedCards: 1)))")
+    check(model.statusLine(.pages, selectedCards: 0) == "7 pages from 4 files", "Pages status (\(model.statusLine(.pages, selectedCards: 0)))")
+    model.pending = []
+
+    // Sorting moves whole files; reversing turns the order round.
+    check(model.arrangement(.nameAscending, in: .files) == [[3], [0, 1, 2, 6], [4, 5]], "A to Z: Floor plan, Lease, Schedule")
+    check(model.arrangement(.nameDescending, in: .files) == [[4, 5], [0, 1, 2, 6], [3]], "Z to A")
+    check(model.arrangement(.reverse, in: .files) == [[4, 5], [3], [0, 1, 2, 6]], "files back to front")
+    check(model.arrangement(.reverse, in: .pages)?.flatMap { $0 } == [6, 5, 4, 3, 2, 1, 0], "pages back to front")
+    let sorted = WorkspaceModel(entries: [PageGridModel.Entry(key: 1, origin: plan), PageGridModel.Entry(key: 2, origin: lease)], documentName: "x")
+    check(sorted.arrangement(.nameAscending, in: .files) == nil, "already in order: nothing to do")
+
+    // The document's own pages are a file named after it, in the first colour.
+    let own = WorkspaceModel(entries: [PageGridModel.Entry(key: 1), PageGridModel.Entry(key: 2, origin: plan)], documentName: "Report.pdf")
+    check(own.files.map(\.origin) == [PageOrigin(fileName: "Report.pdf", colorIndex: 0), plan], "own pages are the document's file")
 }
 
 // MARK: - Read aloud, recents
@@ -391,14 +441,184 @@ private func viewerKitPageEdits() {
     wait { pages.performed.last == .move([0], to: 1) }
     check(pages.performed.last == .move([0], to: 1), "drag page 1 after page 2")
 
-    // The organiser: in and out, with Done.
+    // The workspace: in and out, Esc going back.
     Viewer.shared.showOrganiser(for: controller.handle, adding: [])
-    check(controller.organiser != nil && controller.window?.toolbar?.identifier == DocumentToolbar.organiserToolbarID, "organiser shows")
+    check(controller.workspace != nil && controller.window?.toolbar?.identifier == DocumentToolbar.workspaceToolbarID, "the workspace shows")
     let ids = controller.window?.toolbar?.items.map(\.itemIdentifier) ?? []
-    check(ids == [.viewMenu, .flexibleSpace, .organiserTitle, .flexibleSpace, .organiserRotateLeft, .organiserRotateRight, .organiserDelete,
-                  .organiserSize, .organiserDone], "organiser toolbar (\(ids.map(\.rawValue)))")
+    check(ids == [.viewMenu, .workspaceMode, .flexibleSpace, .workspaceAdd, .workspaceRotateLeft, .workspaceRotateRight, .workspaceDelete, .space,
+                  .workspaceSelectAll, .workspaceSort, .workspaceLayout, .space, .workspaceFinish], "workspace toolbar (\(ids.map(\.rawValue)))")
     controller.cancelOperation(nil)
-    check(controller.organiser == nil && controller.window?.toolbar?.identifier == DocumentToolbar.documentToolbarID, "Esc goes back")
+    check(controller.workspace == nil && controller.window?.toolbar?.identifier == DocumentToolbar.documentToolbarID, "Esc goes back")
+    controller.window?.close()
+}
+
+// MARK: - The workspace (ux §6.2)
+
+/// A converter for the workspace's checks and renders: a picture becomes a landscape page with a picture on it, a
+/// spreadsheet a page with a table, and while `hold` is set a conversion waits half done (its card shows the progress).
+@MainActor
+final class WorkspaceConvert: Converting {
+    var hold = false
+    private(set) var waiting = 0
+
+    func converters(for input: UTType, to output: ConversionFormat) -> [ConverterOffer] { [] }
+    func canConvertToPDF(_ url: URL) -> Bool { true }
+
+    func convert(_ job: ConversionJob, progress: ToolProgress) async throws -> ConversionResult {
+        progress.report(completed: 62, of: 100)
+        waiting += 1
+        while hold { try await Task.sleep(nanoseconds: 20_000_000) }
+        waiting -= 1
+        let ext = job.inputs.first?.pathExtension.lowercased() ?? ""
+        try Self.page(picture: ext == "png").write(to: job.destination)
+        return ConversionResult(outputs: [job.destination], engine: .builtIn(.attributedText))
+    }
+
+    static func page(picture: Bool) -> Data {
+        let data = NSMutableData()
+        var box = picture ? CGRect(x: 0, y: 0, width: 800, height: 600) : CGRect(x: 0, y: 0, width: 612, height: 792)
+        guard let consumer = CGDataConsumer(data: data as CFMutableData), let context = CGContext(consumer: consumer, mediaBox: &box, nil) else { return Data() }
+        context.beginPDFPage(nil)
+        if picture {
+            let colors = [CGColor(srgbRed: 0.81, green: 0.89, blue: 1, alpha: 1), CGColor(srgbRed: 0.62, green: 0.76, blue: 0.97, alpha: 1),
+                          CGColor(srgbRed: 0.91, green: 0.82, blue: 1, alpha: 1)]
+            let gradient = CGGradient(colorsSpace: CGColorSpace(name: CGColorSpace.sRGB), colors: colors as CFArray, locations: [0, 0.45, 1])!
+            context.drawLinearGradient(gradient, start: .zero, end: CGPoint(x: 800, y: 600), options: [])
+            context.setStrokeColor(CGColor(gray: 1, alpha: 0.9))
+            context.setLineWidth(10)
+            context.stroke(CGRect(x: 110, y: 100, width: 580, height: 400))
+            context.setFillColor(CGColor(gray: 1, alpha: 0.85))
+            for rect in [CGRect(x: 170, y: 330, width: 170, height: 110), CGRect(x: 170, y: 160, width: 170, height: 120), CGRect(x: 400, y: 160, width: 220, height: 280)] {
+                context.fill(rect)
+            }
+        } else {
+            context.setFillColor(CGColor(srgbRed: 0.36, green: 0.56, blue: 0.36, alpha: 1))
+            context.fill(CGRect(x: 72, y: 700, width: 220, height: 14))
+            context.setFillColor(CGColor(srgbRed: 0.87, green: 0.94, blue: 0.87, alpha: 1))
+            context.fill(CGRect(x: 72, y: 640, width: 468, height: 30))
+            context.setStrokeColor(CGColor(srgbRed: 0.79, green: 0.84, blue: 0.79, alpha: 1))
+            for row in 0..<14 { context.stroke(CGRect(x: 72, y: 640 - CGFloat(row) * 30, width: 468, height: 30)) }
+            for x in [228, 384] as [CGFloat] { context.strokeLineSegments(between: [CGPoint(x: x, y: 250), CGPoint(x: x, y: 670)]) }
+        }
+        context.endPDFPage()
+        context.closePDF()
+        return data as Data
+    }
+}
+
+@MainActor
+private func viewerKitWorkspace() {
+    let (documents, alerts) = installViewer()
+    let folder = viewerFolder("workspace")
+    let lease = folder.appendingPathComponent("Lease agreement.pdf"), schedule = folder.appendingPathComponent("Schedule.pdf")
+    let plan = folder.appendingPathComponent("Floor plan.png"), budget = folder.appendingPathComponent("Budget 2026.xlsx")
+    try? makeLeasePDF().write(to: lease)
+    try? makePDF(pages: 3).write(to: schedule)
+    try? Data("png".utf8).write(to: plan)
+    try? Data("xlsx".utf8).write(to: budget)
+    let convert = WorkspaceConvert()
+    Services.convert = convert
+    documents.makesWindows = true
+    defer { documents.makesWindows = false }
+
+    // Four files dropped on the app: the first PDF opens at once, the others come in around it on their cards.
+    convert.hold = true
+    Viewer.shared.combine([lease, plan, budget, schedule])
+    wait { documents.openDocuments.contains { $0.displayName == "Combined" } && convert.waiting > 0 }
+    guard let handle = documents.openDocuments.last(where: { $0.displayName == "Combined" }), let controller = Viewer.shared.controller(for: handle),
+          let workspace = controller.workspace else { check(false, "Combine opens the workspace"); return }
+    check(handle.pageCount == 12 && workspace.mode == .files, "the lease is in at once; Files shows (\(handle.pageCount) pages)")
+    wait { workspace.model.pending.count == 3 && workspace.model.pending.first?.fraction != nil }
+    check(workspace.model.pending.map(\.name) == ["Floor plan.png", "Budget 2026.xlsx", "Schedule.pdf"]
+          && workspace.model.pending.first?.fraction == 0.62, "the others wait on their cards, the first half converted")
+    check(workspace.grid.items.map(\.id).count == 5 && workspace.fileCount == 4, "four file cards and the add card")
+    convert.hold = false
+    wait { workspace.model.pending.isEmpty && handle.pageCount == 17 }
+    let files = workspace.model.files
+    check(files.map(\.origin.fileName) == ["Lease agreement.pdf", "Floor plan.png", "Budget 2026.xlsx", "Schedule.pdf"]
+          && files.map(\.pages.count) == [12, 1, 1, 3], "in the order dropped (\(files.map(\.origin.fileName)))")
+    check(files.map(\.origin.colorIndex) == [0, 1, 2, 3], "each its own pill colour, in turn")
+    check(controller.window?.subtitle.hasPrefix("4 files · 17 pages") == true, "the title says it (\(controller.window?.subtitle ?? ""))")
+
+    // Cards: 184 × 242, 36 apart, 28 from the top, centred; a "+" between neighbours.
+    controller.window?.layoutIfNeeded()
+    workspace.view.layoutSubtreeIfNeeded()
+    workspace.grid.relayout(animated: false)
+    let ids = workspace.grid.items.map(\.id)
+    if let a = workspace.grid.frame(of: ids[0]), let b = workspace.grid.frame(of: ids[1]) {
+        check(a.size == SPMetrics.Workspace.fileCard && b.minX - a.maxX == SPMetrics.Workspace.fileGap.width && a.minY == SPMetrics.Workspace.margin,
+              "file cards \(a.size), \(b.minX - a.maxX) apart, \(a.minY) down")
+        let row = workspace.grid.items.compactMap { workspace.grid.frame(of: $0.id) }.filter { $0.minY == a.minY }
+        let left = a.minX, right = workspace.grid.bounds.width - (row.last?.maxX ?? 0)
+        check(abs(left - right) <= 1, "the row is centred (\(left) / \(right))")
+    } else { check(false, "card frames") }
+    let inserters = workspace.grid.subviews.compactMap { $0 as? WorkspaceInserter }.filter { !$0.isHidden }
+    check(inserters.count >= 3 && inserters.map(\.gap).sorted().prefix(3) == [1, 2, 3], "a + between each pair of neighbours (\(inserters.map(\.gap)))")
+
+    // Select a file: the menus' page commands act on its pages; rotate, then Pages keeps the selection.
+    let pages = Services.pages as! FakePages
+    workspace.grid.select([.file(files[3].origin)])
+    check(controller.selectedPages == [14, 15, 16] && workspace.model.statusLine(.files, selectedCards: 1).hasSuffix("1 selected"), "Schedule selected")
+    workspace.rotateSelection(1)
+    wait { pages.performed.last == .rotate([14, 15, 16], quarterTurns: 1) }
+    check(handle.pdf.page(at: 15)?.rotation == 90, "rotated Schedule's pages")
+    workspace.setMode(.pages)
+    check(workspace.grid.selection.count == 3 && controller.selectedPages == [14, 15, 16], "Pages keeps the selection")
+    check((controller.window?.toolbar?.items.first { $0.itemIdentifier == .workspaceMode }?.view as? NSSegmentedControl)?.selectedSegment == 1,
+          "the toolbar says Pages")
+
+    // A page duplicated in Pages stays in its file; a file duplicated in Files is a file of its own.
+    workspace.grid.select([.page(key: workspace.model.entries[13].key)])
+    workspace.perform(.duplicate, on: workspace.grid.card(for: .page(key: workspace.model.entries[13].key)) ?? WorkspaceCardView())
+    wait { handle.pageCount == 18 }
+    check(workspace.model.file(of: 14) == files[2].origin, "the copy is still Budget's")
+    workspace.setMode(.files)
+    if let planCard = workspace.grid.card(for: .file(files[1].origin)) { workspace.perform(.duplicate, on: planCard) } else { check(false, "plan card") }
+    wait { handle.pageCount == 19 }
+    check(workspace.model.files.count == 5 && workspace.model.files[2].origin.fileName == "Floor plan.png"
+          && workspace.model.files[2].origin.colorIndex == 4, "a second Floor plan card in a new colour")
+
+    // Sort: whole files move, as one undo step.
+    workspace.sort(.nameAscending)
+    wait { workspace.model.files.first?.origin.fileName == "Budget 2026.xlsx" }
+    check(workspace.model.files.map(\.origin.fileName) == ["Budget 2026.xlsx", "Floor plan.png", "Floor plan.png", "Lease agreement.pdf", "Schedule.pdf"],
+          "A to Z (\(workspace.model.files.map(\.origin.fileName)))")
+    handle.undoManager?.undo()
+    controller.documentChanged()   // DocumentKit reports the undone pages; the fake doesn't
+    wait { workspace.model.files.first?.origin.fileName == "Lease agreement.pdf" }
+    check(workspace.model.files.first?.origin.fileName == "Lease agreement.pdf", "⌘Z puts the old order back in one step")
+
+    // Every page can't go.
+    workspace.selectAll()
+    workspace.deleteSelection()
+    wait { !alerts.messages.isEmpty }
+    check(alerts.messages.last == "A PDF needs at least one page." && handle.pageCount == 19, "never the last page")
+
+    // The preview: the file's pages, ‹ › turn them, rotate acts on the page shown, Esc closes.
+    workspace.showPreview(.file(workspace.model.files[0].origin))
+    guard let preview = workspace.preview else { check(false, "the preview opens"); return }
+    check(preview.counterText == "1 / 12" && controller.selectedPages == [0], "Lease's first page of 12")
+    preview.keyDown(with: NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil,
+                                           characters: String(UnicodeScalar(NSRightArrowFunctionKey)!), charactersIgnoringModifiers: String(UnicodeScalar(NSRightArrowFunctionKey)!),
+                                           isARepeat: false, keyCode: 124)!)
+    check(preview.counterText == "2 / 12" && controller.selectedPages == [1], "→ turns the page")
+    let rotate = NSMenuItem(title: "", action: #selector(DocumentWindowController.performMenuCommand(_:)), keyEquivalent: "")
+    rotate.identifier = NSUserInterfaceItemIdentifier(MenuCommand.rotateRight.rawValue)
+    controller.performMenuCommand(rotate)
+    wait { handle.pdf.page(at: 1)?.rotation == 90 }
+    check(handle.pdf.page(at: 1)?.rotation == 90 && workspace.preview?.counterText == "2 / 12", "⌘R turns the page shown; the preview stays on it")
+    controller.cancelOperation(nil)
+    check(workspace.preview == nil && controller.workspace != nil, "Esc closes the preview first")
+
+    // List view, then Finish: back to the document with the banner that offers to save.
+    workspace.setLayout(.list)
+    if let row = workspace.grid.frame(of: workspace.grid.items[0].id) { check(row.height == SPMetrics.Workspace.listRowHeight, "list rows") }
+    workspace.setLayout(.grid)
+    ToolsKitModule.install()
+    controller.finishWorkspace()
+    check(controller.workspace == nil && controller.root.banner != nil, "Finish shows the document and the banner")
+    if let banner = controller.root.banner { controller.root.hideBanner(banner, animated: false) }
+    Services.convert = FakeConvert()
     controller.window?.close()
 }
 
@@ -552,7 +772,30 @@ private func drawToolbar(of window: NSWindow, in frameView: NSView) {
         guard let item = viewer.value(forKey: "item") as? NSToolbarItem else { continue }
         let rect = viewer.convert(viewer.bounds, to: frameView)
         let kind = viewer.subviews.first.map { String(describing: type(of: $0)) } ?? ""
-        if let view = item.view, view is TitleView || view is NSSlider {
+        if let control = item.view as? NSSegmentedControl {
+            // The workspace's Files | Pages: a track, the chosen segment raised, each with its picture and word.
+            let frame = control.convert(control.bounds, to: frameView)
+            let track = NSRect(x: frame.minX, y: frame.midY - 14, width: frame.width, height: 28)
+            SPColor.label.color.withAlphaComponent(0.06).setFill()
+            NSBezierPath(roundedRect: track, xRadius: 9, yRadius: 9).fill()
+            let width = track.width / CGFloat(max(control.segmentCount, 1))
+            for segment in 0..<control.segmentCount {
+                let rect = NSRect(x: track.minX + CGFloat(segment) * width, y: track.minY, width: width, height: track.height)
+                if control.isSelected(forSegment: segment) {
+                    SPColor.controlBackground.color.setFill()
+                    NSBezierPath(roundedRect: rect.insetBy(dx: 2, dy: 2), xRadius: 7, yRadius: 7).fill()
+                }
+                let text = NSAttributedString(string: control.label(forSegment: segment) ?? "", attributes: [
+                    .font: NSFont.systemFont(ofSize: 13, weight: control.isSelected(forSegment: segment) ? .semibold : .regular), .foregroundColor: SPColor.label.color])
+                let image = control.image(forSegment: segment)?.withSymbolConfiguration(.init(pointSize: 13, weight: .regular).applying(.init(paletteColors: [ink])))
+                let total = text.size().width + (image.map { $0.size.width + 6 } ?? 0)
+                var x = rect.midX - total / 2
+                if let image { image.draw(in: NSRect(x: x, y: rect.midY - image.size.height / 2, width: image.size.width, height: image.size.height)); x += image.size.width + 6 }
+                text.draw(at: NSPoint(x: x, y: rect.midY - text.size().height / 2))
+            }
+            continue
+        }
+        if let view = item.view, view is TitleView {
             let frame = view.convert(view.bounds, to: frameView)
             context.saveGState()
             context.translateBy(x: frame.minX, y: view.isFlipped ? frame.maxY : frame.minY)
@@ -564,7 +807,7 @@ private func drawToolbar(of window: NSWindow, in frameView: NSView) {
             context.restoreGState()
             continue
         }
-        if item.itemIdentifier == .tools || item.itemIdentifier == .organiserDone {
+        if item.itemIdentifier == .tools || item.itemIdentifier == .workspaceFinish {
             let capsule = NSRect(x: rect.minX + 2, y: rect.midY - 14, width: rect.width - 4, height: 28)
             SPColor.accent.color.setFill()
             NSBezierPath(roundedRect: capsule, xRadius: 14, yRadius: 14).fill()
@@ -697,29 +940,10 @@ private func viewerKitRenders() {
     render(window, "main-window-result", sidebar: controller.sidebar.view)
     if let banner = controller.root.banner { controller.root.hideBanner(banner, animated: false) }
 
-    // organizer.png: 12 pages, three from “Inventory.pdf” in teal, page 3 selected with its hover actions.
-    controller.pageActions.tag(7..<10, as: PageOrigin(fileName: "Inventory.pdf", colorIndex: 0))
-    Viewer.shared.showOrganiser(for: controller.handle, adding: [])
-    guard let organiser = controller.organiser else { check(false, "organiser"); return }
-    organiser.grid.select([2], scroll: false)
-    organiser.reload(selecting: [2])
-    window.layoutIfNeeded()
-    organiser.grid.collectionView.layoutSubtreeIfNeeded()
-    wait { organiser.grid.collectionView.visibleItems().allSatisfy { ($0 as? PageItem).map { $0.thumbnail.image != nil } ?? true } }
-    if let third = organiser.grid.collectionView.item(at: IndexPath(item: 2, section: 0)) as? PageItem { third.mouseEntered(with: NSEvent()) }
-    let gridItems = (0..<3).compactMap { organiser.grid.collectionView.item(at: IndexPath(item: $0, section: 0)) as? PageItem }
-    if gridItems.count == 3 {
-        let a = gridItems[0].thumbnail.convert(gridItems[0].thumbnail.pageRect, to: organiser.grid.collectionView)
-        let b = gridItems[1].thumbnail.convert(gridItems[1].thumbnail.pageRect, to: organiser.grid.collectionView)
-        check(a.width == SPMetrics.Organiser.defaultThumbnailWidth, "160 pt organiser pages (\(a.width))")
-        check(abs(b.minX - a.maxX - SPMetrics.Organiser.gap) < 0.5, "24 pt apart (\(b.minX - a.maxX))")
-        check(abs(a.minY - 28) < 0.5, "28 pt above the first row (\(a.minY))")
-        check(gridItems[2].thumbnail.isSelected && gridItems[2].hoverActions?.isHidden == false, "page 3 selected, ⟲ ⟳ ✕ showing")
-    } else { check(false, "organiser items") }
-    let tagged = organiser.grid.collectionView.item(at: IndexPath(item: 8, section: 0)) as? PageItem
-    check(tagged?.thumbnail.originColor != nil, "pages from Inventory.pdf carry its colour")
-    render(window, "organizer")
-    controller.hideOrganiser()
+    // workspace.png: four files combined, the lease selected, the floor plan hovered with its toolbar, the budget still
+    // converting; then Pages, the list, the preview, and the dark appearance.
+    window.close()
+    renderWorkspace(documents)
 
     // welcome.png: the four targets and three recents, the first target hovered as in the mockup.
     let now = Date()
@@ -741,8 +965,77 @@ private func viewerKitRenders() {
         check(abs(targets[0].minX - (760 - targets[3].maxX)) < 1, "centred")
         RunLoop.main.run(until: Date().addingTimeInterval(0.3))
         render(welcomeWindow, "welcome")
+        render(welcomeWindow, "welcome-dark", dark: true)
     }
     _ = renderer
+}
+
+/// The workspace's renders (workspace.png, workspace-pages.png, workspace-list.png, workspace-preview.png).
+@MainActor
+private func renderWorkspace(_ documents: FakeDocuments) {
+    let folder = viewerFolder("workspace-renders")
+    let lease = folder.appendingPathComponent("Lease agreement.pdf"), schedule = folder.appendingPathComponent("Schedule.pdf")
+    let plan = folder.appendingPathComponent("Floor plan.png"), budget = folder.appendingPathComponent("Budget 2026.xlsx")
+    try? makeLeasePDF().write(to: lease)
+    try? makePDF(pages: 3).write(to: schedule)
+    try? Data("png".utf8).write(to: plan)
+    try? Data("xlsx".utf8).write(to: budget)
+    let convert = WorkspaceConvert()
+    Services.convert = convert
+    documents.makesWindows = true
+    defer { documents.makesWindows = false; Services.convert = FakeConvert() }
+    // The plan converts; the budget is held half done for the picture.
+    Viewer.shared.combine([lease, plan, schedule])
+    wait { documents.openDocuments.last?.displayName == "Combined" && documents.openDocuments.last?.pageCount == 16 }
+    guard let handle = documents.openDocuments.last, let controller = Viewer.shared.controller(for: handle), let workspace = controller.workspace,
+          let window = controller.window else { check(false, "the workspace for the renders"); return }
+    convert.hold = true
+    controller.pageActions.insertFiles([budget], atGap: 13, tagged: true, firstColor: 3)
+    wait { !workspace.model.pending.isEmpty && workspace.model.pending[0].fraction != nil }
+    window.layoutIfNeeded()
+    workspace.view.layoutSubtreeIfNeeded()
+    workspace.grid.relayout(animated: false)
+    func settle() {
+        workspace.grid.updateVisibleCards()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.6))   // the thumbnails render off the main thread
+    }
+    let ids = workspace.grid.items.map(\.id)
+    workspace.grid.select([ids[0]])
+    workspace.grid.card(for: ids[1])?.isHovered = true
+    settle()
+    if let rep = render(window, "workspace") {
+        // The canvas is the soft blue (ux §2.3), the selected card has the accent ring.
+        let canvas = pixel(rep, 40, 300)
+        check(canvas.map { abs($0.redComponent - 0xED / 255) < 0.03 && abs($0.blueComponent - 0xFE / 255) < 0.03 } ?? false,
+              "the canvas is #EDF3FE (\(String(describing: canvas)))")
+        if let frame = workspace.grid.frame(of: ids[0]), let frameView = window.contentView?.superview {
+            let onScreen = workspace.grid.convert(frame, to: frameView)
+            check(isAccent(pixel(rep, onScreen.midX, frameView.bounds.height - onScreen.maxY - 1)), "the selected card's accent ring")
+        }
+    }
+    render(window, "workspace-dark", dark: true)
+    workspace.grid.card(for: ids[1])?.isHovered = false
+    workspace.setMode(.pages)
+    workspace.grid.select([workspace.grid.items[1].id])
+    workspace.grid.card(for: workspace.grid.items[4].id)?.isHovered = true
+    settle()
+    render(window, "workspace-pages")
+    workspace.setMode(.files)
+    workspace.setLayout(.list)
+    settle()
+    render(window, "workspace-list")
+    workspace.setLayout(.grid)
+    workspace.showPreview(ids[0])
+    if let preview = workspace.preview {
+        for _ in 0..<4 { preview.reload(pages: preview.pages, current: preview.currentPage + 1) }
+        preview.layoutSubtreeIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.6))
+        check(preview.counterText == "5 / 12", "the preview on page 5 of the lease (\(preview.counterText))")
+        render(window, "workspace-preview")
+        workspace.closePreview()
+    }
+    convert.hold = false
+    wait { workspace.model.pending.isEmpty }
     window.close()
 }
 

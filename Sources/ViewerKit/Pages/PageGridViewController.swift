@@ -3,29 +3,22 @@ import PDFKit
 import SuperPDFCore
 import UniformTypeIdentifiers
 
-/// The pages of a document as thumbnails: the sidebar's column (ux §2.1, §6.3) and the organiser's grid (ux §6.2).
-/// Drag to rearrange, drop files between pages to insert them, drag pages from another window to copy them, drag pages
-/// to Finder to extract them; right-click for the page menu; ⌫ deletes. Thumbnails render lazily off the main thread.
+/// The pages of a document as the sidebar's column of thumbnails (ux §2.1, §6.3). Drag to rearrange, drop files
+/// between pages to insert them, drag pages from another window to copy them, drag pages to Finder to extract them;
+/// right-click for the page menu; ⌫ deletes. Thumbnails render lazily off the main thread. (The workspace, ux §6.2,
+/// is `WorkspaceGridView`.)
 @MainActor
 final class PageGridViewController: NSViewController, NSCollectionViewDataSource, NSCollectionViewDelegate,
     NSCollectionViewDelegateFlowLayout, NSFilePromiseProviderDelegate {
-    enum Kind { case sidebar, organiser }
-
-    let kind: Kind
     private unowned let owner: DocumentWindowController
     let collectionView = PageCollectionView()
     let scrollView = NSScrollView()
     private let layout = PageFlowLayout()
     private let dropLabel = DropLabelView()
     private var dropLabelTimer: Timer?
-    private var style: ThumbnailStyle { kind == .sidebar ? .sidebar : .organiser }
-    /// Organiser thumbnail width (the size slider, 80–320 pt).
-    var organiserWidth: CGFloat = SPMetrics.Organiser.defaultThumbnailWidth {
-        didSet { if organiserWidth != oldValue { layout.invalidateLayout(); collectionView.reloadData() } }
-    }
+    private let style = ThumbnailStyle.sidebar
     /// Turned page aspects (height / width), read once per reload.
     private var aspects: [CGFloat] = []
-    private var dragged: [Int] = []
     private var droppedFiles: (sequence: Int, files: [DroppedFile])?
     /// Called when the selection changes by a click or a reload.
     var onSelectionChange: ((IndexSet) -> Void)?
@@ -33,8 +26,7 @@ final class PageGridViewController: NSViewController, NSCollectionViewDataSource
     private var document: DocumentHandle { owner.handle }
     private var pageCount: Int { document.pageCount }
 
-    init(kind: Kind, owner: DocumentWindowController) {
-        self.kind = kind
+    init(owner: DocumentWindowController) {
         self.owner = owner
         super.init(nibName: nil, bundle: nil)
     }
@@ -42,16 +34,14 @@ final class PageGridViewController: NSViewController, NSCollectionViewDataSource
     required init?(coder: NSCoder) { fatalError("not used") }
 
     override func loadView() {
-        layout.isList = kind == .sidebar
         collectionView.collectionViewLayout = layout
         collectionView.dataSource = self
         collectionView.delegate = self
         collectionView.isSelectable = true
         collectionView.allowsMultipleSelection = true
-        collectionView.allowsEmptySelection = kind == .organiser
+        collectionView.allowsEmptySelection = false
         collectionView.backgroundColors = [.clear]
         collectionView.register(PageItem.self, forItemWithIdentifier: PageItem.identifier)
-        collectionView.register(AddPagesItem.self, forItemWithIdentifier: AddPagesItem.identifier)
         collectionView.register(GapIndicatorView.self, forSupplementaryViewOfKind: NSCollectionView.elementKindInterItemGapIndicator,
                                 withIdentifier: NSUserInterfaceItemIdentifier("Gap"))
         collectionView.registerForDraggedTypes([.superPDFPages, .fileURL, .string])
@@ -60,7 +50,7 @@ final class PageGridViewController: NSViewController, NSCollectionViewDataSource
         collectionView.onDelete = { [weak self] in self?.deleteSelection() }
         collectionView.onDragExit = { [weak self] in self?.hideDropLabel() }
         collectionView.menuForSelection = { [weak self] selection in self?.owner.pageMenu(for: Array(selection)) }
-        collectionView.setAccessibilityLabel(kind == .sidebar ? "Thumbnails" : ViewerStrings.Organiser.title)
+        collectionView.setAccessibilityLabel("Thumbnails")
 
         scrollView.documentView = collectionView
         scrollView.drawsBackground = false
@@ -125,41 +115,20 @@ final class PageGridViewController: NSViewController, NSCollectionViewDataSource
     // MARK: Layout
 
     private var pageWidth: CGFloat {
-        kind == .organiser ? organiserWidth
-            : max(SPMetrics.Sidebar.minimumThumbnailWidth, scrollView.bounds.width - SPMetrics.Sidebar.thumbnailInset)
+        max(SPMetrics.Sidebar.minimumThumbnailWidth, scrollView.bounds.width - SPMetrics.Sidebar.thumbnailInset)
     }
 
+    /// The page sits 16 pt in from each side and 14 pt from the top; thumbnails are 12 pt apart (main-window.png).
     private func updateInsets() {
         let margin = style.ringMargin
-        switch kind {
-        case .sidebar:
-            // The page sits 16 pt in from each side and 14 pt from the top; thumbnails are 12 pt apart (main-window.png).
-            let side = SPMetrics.Sidebar.thumbnailInset / 2 - margin
-            layout.sectionInset = NSEdgeInsets(top: 14 - margin, left: side, bottom: 14, right: side)
-            layout.minimumLineSpacing = SPMetrics.Sidebar.thumbnailGap - margin
-            layout.minimumInteritemSpacing = 0
-        case .organiser:
-            // Columns of pages 24 pt apart, centred; 28 pt above the first row (organizer.png).
-            let cell = style.cellSize(pageWidth: pageWidth, aspect: 11 / 8.5).width
-            let spacing = SPMetrics.Organiser.gap - 2 * margin
-            let available = scrollView.bounds.width - 64
-            let columns = max(1, Int((available + spacing) / (cell + spacing)))
-            let used = CGFloat(columns) * cell + CGFloat(columns - 1) * spacing
-            // The flow layout spreads leftover width between items, so the insets take all of it.
-            let left = max(8, ((scrollView.bounds.width - used) / 2).rounded(.down))
-            let right = max(8, scrollView.bounds.width - used - left)
-            layout.sectionInset = NSEdgeInsets(top: 28 - margin, left: left, bottom: 28, right: right)
-            layout.minimumInteritemSpacing = spacing
-            layout.minimumLineSpacing = SPMetrics.Organiser.gap - margin
-        }
+        let side = SPMetrics.Sidebar.thumbnailInset / 2 - margin
+        layout.sectionInset = NSEdgeInsets(top: 14 - margin, left: side, bottom: 14, right: side)
+        layout.minimumLineSpacing = SPMetrics.Sidebar.thumbnailGap - margin
+        layout.minimumInteritemSpacing = 0
     }
 
     func collectionView(_ collectionView: NSCollectionView, layout collectionViewLayout: NSCollectionViewLayout,
                         sizeForItemAt indexPath: IndexPath) -> NSSize {
-        if kind == .organiser {
-            // A uniform grid: every cell is a portrait page's height; other shapes fit inside, top-aligned.
-            return style.cellSize(pageWidth: pageWidth, aspect: 11 / 8.5)
-        }
         let aspect = indexPath.item < aspects.count ? aspects[indexPath.item] : 11 / 8.5
         return style.cellSize(pageWidth: pageWidth, aspect: aspect)
     }
@@ -168,39 +137,19 @@ final class PageGridViewController: NSViewController, NSCollectionViewDataSource
 
     func numberOfSections(in collectionView: NSCollectionView) -> Int { 1 }
 
-    func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int {
-        pageCount + (kind == .organiser ? 1 : 0)
-    }
+    func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int { pageCount }
 
     func collectionView(_ collectionView: NSCollectionView, itemForRepresentedObjectAt indexPath: IndexPath) -> NSCollectionViewItem {
-        if indexPath.item >= pageCount {
-            let item = collectionView.makeItem(withIdentifier: AddPagesItem.identifier, for: indexPath) as! AddPagesItem
-            item.onClick = { [weak self] view in self?.owner.showAddPagesMenu(at: self?.pageCount ?? 0, from: view) }
-            return item
-        }
         let item = collectionView.makeItem(withIdentifier: PageItem.identifier, for: indexPath) as! PageItem
         item.thumbnail.style = style
-        if kind == .organiser {
-            item.enableHoverActions(
-                rotateLeft: { [weak self, weak item] in self?.hoverAction(item) { self?.owner.pageActions.rotate([$0], quarterTurns: -1) } },
-                rotateRight: { [weak self, weak item] in self?.hoverAction(item) { self?.owner.pageActions.rotate([$0], quarterTurns: 1) } },
-                delete: { [weak self, weak item] in self?.hoverAction(item) { self?.owner.pageActions.delete([$0]) } })
-        }
         configure(item, at: indexPath.item)
         return item
-    }
-
-    private func hoverAction(_ item: PageItem?, _ action: (Int) -> Void) {
-        guard let item, let index = collectionView.indexPath(for: item)?.item else { return }
-        action(index)
     }
 
     private func configure(_ item: PageItem, at index: Int) {
         guard let page = document.pdf.page(at: index) else { return }
         item.thumbnail.aspect = index < aspects.count ? aspects[index] : 11 / 8.5
         item.thumbnail.label = page.label ?? "\(index + 1)"
-        item.thumbnail.isGhosted = dragged.contains(index)
-        item.thumbnail.originColor = kind == .organiser ? owner.pageActions.origin(of: page).map { PageOrigin.palette[$0.colorIndex].color } : nil
         item.thumbnail.setAccessibilityLabel(ViewerStrings.Sidebar.page(item.thumbnail.label))
         let pixels = Int((pageWidth * (view.window?.backingScaleFactor ?? 2)).rounded())
         let markup = ThumbnailRenderer.markupSignature(of: page)
@@ -271,23 +220,12 @@ final class PageGridViewController: NSViewController, NSCollectionViewDataSource
 
     func collectionView(_ collectionView: NSCollectionView, draggingSession session: NSDraggingSession, willBeginAt screenPoint: NSPoint,
                         forItemsAt indexPaths: Set<IndexPath>) {
-        dragged = indexPaths.map(\.item).sorted()
         session.draggingFormation = .stack
-        setGhosted()
     }
 
     func collectionView(_ collectionView: NSCollectionView, draggingSession session: NSDraggingSession, endedAt screenPoint: NSPoint,
                         dragOperation operation: NSDragOperation) {
-        dragged = []
-        setGhosted()
         hideDropLabel()
-    }
-
-    private func setGhosted() {
-        for case let item as PageItem in collectionView.visibleItems() {
-            guard let index = collectionView.indexPath(for: item)?.item else { continue }
-            item.thumbnail.isGhosted = kind == .organiser && dragged.contains(index)
-        }
     }
 
     nonisolated func filePromiseProvider(_ filePromiseProvider: NSFilePromiseProvider, fileNameForType fileType: String) -> String {
@@ -348,8 +286,7 @@ final class PageGridViewController: NSViewController, NSCollectionViewDataSource
 
     private func decide(_ info: NSDraggingInfo, gap: Int) -> DropDecision {
         guard let payload = payload(of: info) else { return DropDecision(.none) }
-        let zone: DropZone = kind == .sidebar ? .sidebarGap(gap) : .organiserGap(gap)
-        return DropDecision.decide(payload, onto: zone, of: document.id, isLocked: document.state.isLocked,
+        return DropDecision.decide(payload, onto: .sidebarGap(gap), of: document.id, isLocked: document.state.isLocked,
                                    optionKey: NSEvent.modifierFlags.contains(.option))
     }
 
@@ -391,8 +328,7 @@ final class PageGridViewController: NSViewController, NSCollectionViewDataSource
         guard let frame = layout.layoutAttributesForInterItemGap(before: IndexPath(item: gap, section: 0))?.frame else { return }
         let size = dropLabel.intrinsicContentSize
         let width = min(size.width, collectionView.bounds.width - 16)
-        var origin = layout.isList ? NSPoint(x: (collectionView.bounds.width - width) / 2, y: frame.midY - size.height / 2)
-            : NSPoint(x: frame.maxX + 6, y: frame.minY + 12)
+        var origin = NSPoint(x: (collectionView.bounds.width - width) / 2, y: frame.midY - size.height / 2)
         origin.x = min(max(8, origin.x), collectionView.bounds.width - width - 8)
         dropLabel.frame = NSRect(origin: origin, size: NSSize(width: width, height: size.height))
     }

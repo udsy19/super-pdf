@@ -41,10 +41,13 @@ public enum SPFont {
     public static let secondaryButton = SPTextStyle(11)
     /// Highlights and Notes: page number (Preview's).
     public static let notesPageNumber = SPTextStyle(11, .bold)
+    /// A file's name in its coloured pill (workspace file cards, Combine's list); page cards use `pagePill`.
+    public static let pill = SPTextStyle(12, .semibold)
+    public static let pagePill = SPTextStyle(11, .semibold)
 
     /// Every role, for the self-test.
     public static let all: [SPTextStyle] = [
         body, secondary, panelTitle, sheetTitle, sectionHeader, welcomeTitle, welcomeSubtitle, welcomeTarget, tileName, tileHint,
-        banner, bannerEmphasis, primaryButton, secondaryButton, notesPageNumber,
+        banner, bannerEmphasis, primaryButton, secondaryButton, notesPageNumber, pill, pagePill,
     ]
 }

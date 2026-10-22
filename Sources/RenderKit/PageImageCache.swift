@@ -2,7 +2,7 @@ import CoreGraphics
 import Foundation
 import SuperPDFCore
 
-/// Page images for thumbnails, the organiser and view tiles: rendered off the main actor, at most a few at a time,
+/// Page images for thumbnails, the workspace and view tiles: rendered off the main actor, at most a few at a time,
 /// kept in a byte-limited cache keyed by document fingerprint, page and pixel size. The same request in flight twice
 /// is rendered once; a cancelled caller stops waiting without stopping the render for others. Open `CGPDFDocument`s are
 /// kept for the last few sources so a scroll through thumbnails does not reparse the file per page.

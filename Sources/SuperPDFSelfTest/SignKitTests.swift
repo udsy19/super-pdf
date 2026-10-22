@@ -76,6 +76,7 @@ private final class SignTestViewer: ViewerPresenting {
     func showBanner(_ banner: ResultBanner, in document: DocumentHandle) { banners.append(banner) }
     func showSidebar(_ mode: SidebarMode, in document: DocumentHandle) {}
     func showOrganiser(for document: DocumentHandle, adding files: [URL]) {}
+    func combine(_ files: [URL]) {}
     func showWelcome() {}
     func showCropHandles(_ handles: CropHandles?, in document: DocumentHandle) {}
     func password(forLocked fileName: String, retry: Bool) async -> String? { nil }

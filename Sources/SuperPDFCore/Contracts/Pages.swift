@@ -1,7 +1,7 @@
 import CoreGraphics
 import Foundation
 
-// Page operations (PagesKit: `Services.pages`; features §1.2). ViewerKit's thumbnails, context menu and organiser,
+// Page operations (PagesKit: `Services.pages`; features §1.2). ViewerKit's thumbnails, context menu and workspace,
 // PagesKit's own panels and batch steps all edit pages through these, so every edit is one undo step.
 
 /// One edit of a document's page list (0-based indices).
