@@ -1020,7 +1020,7 @@ private func viewerKitRenders() {
     _ = renderer
 }
 
-/// The workspace's renders (workspace.png, workspace-pages.png, workspace-list.png, workspace-preview.png).
+/// The workspace's renders (workspace.png, workspace-pages.png, workspace-list.png).
 @MainActor
 private func renderWorkspace(_ documents: FakeDocuments) {
     let folder = viewerFolder("workspace-renders")

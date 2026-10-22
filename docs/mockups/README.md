@@ -17,7 +17,6 @@ appearance is the reference; four screens are also rendered in dark appearance.
 | `panel-request-signatures.png` | Flow archetype (G), step 2 of 3 | §5.3 |
 | `workspace.png` (+ `-dark`) | The workspace, Files: four files as cards with pills, one selected, one hovered with its toolbar, one converting, the "+" between them and the add card | §6.2 |
 | `workspace-pages.png` | The workspace, Pages: a page being dragged, the others sprung aside around the dashed hole | §6.2 |
-| `workspace-preview.png` | The workspace's preview: the page large, its file's pill, ‹ 5 / 12 ›, rotate, delete | §6.2 |
 
 ## Rendering
 

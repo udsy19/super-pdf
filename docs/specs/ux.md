@@ -612,8 +612,8 @@ Empty recents: the list area shows "Files you open will show up here." in `terti
 
 Full-window mode on the soft blue canvas, entered by dropping several files on the welcome window or the app (Combine),
 from the welcome window's Combine files, from the Rearrange tile, View › Page Organiser (⌥⌘6) or the sidebar's
-"⤢". Mockups: `workspace.png` (Files, and `-dark`), `workspace-pages.png` (Pages, a drag in progress),
-`workspace-preview.png` (the preview).
+"⤢". Mockups: `workspace.png` (Files, and `-dark`), `workspace-pages.png` (Pages, a drag in progress).
+Space or the card's preview button opens the system Quick Look panel.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────────────────┐
