@@ -34,6 +34,18 @@ enum SettingsText {
         }
     }
 
+    static let openPDFsWith = "Open PDFs with Super PDF"
+    static func pdfApp(_ state: DefaultPDFApp.State) -> String {
+        switch state {
+        case .thisApp: "Currently: Super PDF"
+        case .other(let name): "Currently: \(name)"
+        case .unknown: "Currently: no app chosen"
+        }
+    }
+    static let makeDefault = "Make Super PDF the PDF App…"
+    static let pdfAppNote = "Finder, Quick Look and Mail then open PDFs here. macOS asks you to confirm."
+    static func pdfAppFailed(_ reason: String) -> String { "Couldn’t change it. \(reason)" }
+
     // MARK: Tools
 
     static let showRecentlyUsed = "Show “Recently used” in the Tools sheet"

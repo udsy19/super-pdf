@@ -70,6 +70,8 @@ private func appInfoPlist() {
     let pdf = types.first { ($0["LSItemContentTypes"] as? [String])?.contains(UTType.pdf.identifier) == true }
     check(pdf?["NSDocumentClass"] as? String == NSStringFromClass(PDFFileDocument.self) && pdf?["CFBundleTypeRole"] as? String == "Editor",
           "PDFs open as DocumentKit's document class, editable")
+    check(pdf?["LSHandlerRank"] as? String == "Default" && types.filter { $0["CFBundleTypeName"] as? String != "PDF document" }.allSatisfy { $0["LSHandlerRank"] as? String == "Alternate" },
+          "PDFs rank Default (Quick Look's Open with; a choice in Finder sticks), everything else Alternate")
     // Every file type the converters take is one Super PDF says it opens (Finder's Open With, the Dock).
     let claimed = types.flatMap { ($0["LSItemContentTypes"] as? [String] ?? []).compactMap(UTType.init) }
     let claimedExtensions = Set(types.flatMap { $0["CFBundleTypeExtensions"] as? [String] ?? [] })

@@ -317,7 +317,7 @@ extension DocumentWindowController: MenuCommandResponding, NSMenuItemValidation 
     }
 
     override public func cancelOperation(_ sender: Any?) {
-        if reader != nil { toggleReader() } else if let workspace { workspace.preview != nil ? workspace.closePreview() : hideWorkspace() }
+        if reader != nil { toggleReader() } else if workspace != nil { hideWorkspace() }
     }
 }
 

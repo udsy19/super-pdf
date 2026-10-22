@@ -1,5 +1,6 @@
 import AppKit
 import PDFKit
+import QuickLookUI
 import SuperPDFCore
 import UniformTypeIdentifiers
 
@@ -92,6 +93,9 @@ final class PageCollectionView: NSCollectionView {
     var onDelete: (() -> Void)?
     var menuForSelection: ((IndexSet) -> NSMenu?)?
     var onDragExit: (() -> Void)?
+    /// Space, and the panel's three calls: Quick Look on the selected pages.
+    var quickLook: QuickLookController?
+    var onSpace: (() -> Void)?
 
     override func draggingExited(_ sender: NSDraggingInfo?) {
         super.draggingExited(sender)
@@ -104,8 +108,16 @@ final class PageCollectionView: NSCollectionView {
             onDelete?()
             return
         }
+        if event.charactersIgnoringModifiers == " ", event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty, let onSpace {
+            onSpace()
+            return
+        }
         super.keyDown(with: event)
     }
+
+    override func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool { quickLook != nil }
+    override func beginPreviewPanelControl(_ panel: QLPreviewPanel!) { quickLook?.begin(panel) }
+    override func endPreviewPanelControl(_ panel: QLPreviewPanel!) { quickLook?.end(panel) }
 
     override func menu(for event: NSEvent) -> NSMenu? {
         let point = convert(event.locationInWindow, from: nil)

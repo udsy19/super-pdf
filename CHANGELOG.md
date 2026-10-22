@@ -2,6 +2,18 @@
 
 All notable changes to Super PDF. Versions follow [Semantic Versioning](https://semver.org).
 
+## [Unreleased]
+
+- Quick Look inside Super PDF: Space on a card in the Combine and Rearrange workspace (Files or Pages), on a sidebar
+  thumbnail or on a recent file in the welcome window opens macOS's own preview panel, with its thumbnail strip, Markup,
+  Share and Open with; the arrow keys and the strip move the selection, and it zooms out of and back into the card. Pages
+  and merged files preview as they are now, without saving. This replaces the workspace's own preview overlay; rotate and
+  delete stay on the cards' hover toolbar and the menus.
+- Super PDF can be your PDF app, so Quick Look's header says "Open with Super PDF": the app now ranks as the default
+  handler for PDFs, the welcome window offers it once (a gentle "Not Now" is remembered), and Settings › General has an
+  "Open PDFs with Super PDF" line showing the current app ("Currently: Adobe Acrobat") with a button; macOS asks you to
+  confirm.
+
 ## [1.1.0] - 2026-10-22
 
 - A cheerful look: one bright colour per section on every tool's icon, section chips in the Tools sheet, a colour wash

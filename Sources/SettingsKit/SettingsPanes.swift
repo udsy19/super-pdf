@@ -35,9 +35,23 @@ private struct GeneralPane: View {
     @Default(.authorName) private var authorName
     @Default(.defaultZoom) private var defaultZoom
     @Default(.textSize) private var textSize
+    @State private var pdfApp = DefaultPDFApp.shared.state
+    @State private var pdfAppProblem: String?
 
     var body: some View {
         Form {
+            if DefaultPDFApp.shared.canChange {
+                Section {
+                    LabeledContent(SettingsText.openPDFsWith) {
+                        HStack {
+                            Text(SettingsText.pdfApp(pdfApp)).foregroundStyle(.secondary)
+                            Button(SettingsText.makeDefault) { makeDefault() }.disabled(pdfApp == .thisApp)
+                        }
+                    }
+                } footer: {
+                    Text(pdfAppProblem.map(SettingsText.pdfAppFailed) ?? SettingsText.pdfAppNote).foregroundStyle(.secondary)
+                }
+            }
             Section {
                 Toggle(SettingsText.openInTabs, isOn: $openInTabs)
                 Picker(SettingsText.saveBehaviour, selection: $saveBehaviour) {
@@ -57,6 +71,20 @@ private struct GeneralPane: View {
                     ForEach(TextSize.allCases, id: \.self) { Text(SettingsText.textSize($0)).tag($0) }
                 }
             }
+        }
+        .onAppear { pdfApp = DefaultPDFApp.shared.state }
+        // Changed in Finder's Get Info meanwhile.
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in pdfApp = DefaultPDFApp.shared.state }
+    }
+}
+
+extension GeneralPane {
+    /// macOS shows its own confirmation; afterwards the line says what is true, whatever was answered.
+    fileprivate func makeDefault() {
+        Task {
+            let outcome = await DefaultPDFApp.shared.makeDefault()
+            pdfApp = DefaultPDFApp.shared.state
+            if case .failed(let reason) = outcome { pdfAppProblem = reason } else { pdfAppProblem = nil }
         }
     }
 }

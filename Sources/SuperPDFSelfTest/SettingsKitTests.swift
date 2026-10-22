@@ -48,6 +48,9 @@ private func settingsText() {
     check(SettingsText.update(.disabled).contains("“Check Now” still looks"), "off, but the manual check still works")
     check(SettingsText.update(.failed("No connection.")) == "Couldn’t check for updates. No connection.", "a failed check says why")
 
+    check(SettingsText.pdfApp(.other(name: "Adobe Acrobat")) == "Currently: Adobe Acrobat" && SettingsText.pdfApp(.thisApp) == "Currently: Super PDF"
+          && SettingsText.pdfApp(.unknown) == "Currently: no app chosen", "the PDF app line names the current app")
+
     let soffice = URL(fileURLWithPath: "/Applications/LibreOffice.app/Contents/MacOS/soffice")
     check(SettingsText.libreOffice(.installed(at: soffice, version: "26.2")) == "Installed (version 26.2) at /Applications/LibreOffice.app.", "installed copy")
     check(SettingsText.libreOffice(.installed(at: URL(fileURLWithPath: "/opt/homebrew/bin/soffice"), version: nil)) == "Installed at /opt/homebrew/bin/soffice.",

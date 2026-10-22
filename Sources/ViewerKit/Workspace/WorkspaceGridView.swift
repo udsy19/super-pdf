@@ -1,4 +1,5 @@
 import AppKit
+import QuickLookUI
 import SuperPDFCore
 
 /// What the grid asks of the workspace: the cards' pictures and actions (`WorkspaceCardHost`), and what selection, the
@@ -7,6 +8,8 @@ import SuperPDFCore
 protocol WorkspaceGridDelegate: WorkspaceCardHost {
     func gridSelectionChanged()
     func gridPreview(_ id: WorkspaceItemID)
+    /// The Quick Look panel for the cards, taken over while the grid is in the responder chain.
+    var quickLook: QuickLookController { get }
     /// The "+" between two cards: the add menu for that gap (cards before it, counting only cards with pages).
     func gridInsert(atCardGap gap: Int, from view: NSView)
     func gridAddFiles()
@@ -24,7 +27,7 @@ protocol WorkspaceGridDelegate: WorkspaceCardHost {
 /// out of the way while something is dragged over them, slide to their new places after a change, and pop in when they
 /// arrive. Only the cards on screen exist (500 pages scroll as lightly as 5). In the Files view a round "+" sits
 /// between neighbouring cards; in the Pages view it appears in the gap under the pointer. Click selects (⌘ and ⇧ add),
-/// the checkbox toggles, double-click or Space previews, ⌫ deletes, arrows move, pinch or ⌘+ / ⌘− resize.
+/// the checkbox toggles, double-click or Space previews (Quick Look), ⌫ deletes, arrows move, pinch or ⌘+ / ⌘− resize.
 @MainActor
 final class WorkspaceGridView: NSView, NSDraggingSource {
     weak var delegate: WorkspaceGridDelegate?
@@ -446,6 +449,11 @@ final class WorkspaceGridView: NSView, NSDraggingSource {
     }
 
     override func cancelOperation(_ sender: Any?) { delegate?.gridEscape() }
+
+    // Quick Look: the panel finds the grid through the responder chain.
+    override func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool { delegate != nil }
+    override func beginPreviewPanelControl(_ panel: QLPreviewPanel!) { delegate?.quickLook.begin(panel) }
+    override func endPreviewPanelControl(_ panel: QLPreviewPanel!) { delegate?.quickLook.end(panel) }
 
     private func step(_ delta: Int, extend: Bool) {
         let ids = contentIDs

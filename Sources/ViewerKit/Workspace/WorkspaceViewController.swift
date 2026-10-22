@@ -18,9 +18,8 @@ final class WorkspaceViewController: NSViewController, WorkspaceGridDelegate, NS
     private(set) var model: WorkspaceModel
     private(set) var mode: WorkspaceMode
     private(set) var layoutKind: WorkspaceLayout
-    private(set) var preview: WorkspacePreviewView?
-    /// What the preview turns through: one file's pages, or (nil) all of them.
-    private var previewFile: PageOrigin?
+    /// Space and the cards' zoom button: the system's Quick Look panel on the selected cards.
+    private(set) lazy var quickLook = QuickLookController(source: self)
 
     static let layoutKey = Defaults.Key<String>("viewerKit.workspaceLayout", default: WorkspaceLayout.grid.rawValue)
     static let scaleKey = Defaults.Key<Double>("viewerKit.workspaceScale", default: 1)
@@ -105,7 +104,6 @@ final class WorkspaceViewController: NSViewController, WorkspaceGridDelegate, NS
     func reload(selecting selection: IndexSet?, animated: Bool = true) {
         _ = view
         let old = model
-        let previewed = preview.flatMap { old.entries.indices.contains($0.currentPage) ? old.entries[$0.currentPage].key : nil }
         model = owner.pageActions.workspaceModel()
         if let selection {
             grid.selection = ids(forPages: selection)
@@ -113,10 +111,7 @@ final class WorkspaceViewController: NSViewController, WorkspaceGridDelegate, NS
         grid.show(model.items(mode), mode: mode, layout: layoutKind, animated: animated && old.entries.count > 0)
         if let frame = selection?.first.flatMap({ grid.frame(of: id(forPage: $0)) }) { grid.scrollToVisible(frame.insetBy(dx: 0, dy: -20)) }
         updateStatus()
-        if let preview {
-            let pages = previewPages(previewFile)
-            if pages.isEmpty { closePreview() } else { preview.reload(pages: pages, current: previewed.flatMap(index(ofKey:))) }
-        }
+        quickLook.reloadIfOpen()
         owner.toolbarController.workspaceChanged()
     }
 
@@ -137,15 +132,10 @@ final class WorkspaceViewController: NSViewController, WorkspaceGridDelegate, NS
         Set(pages.filter { $0 < model.entries.count }.map(id(forPage:)))
     }
 
-    private func index(ofKey key: Int) -> Int? { model.entries.firstIndex { $0.key == key } }
-
     // MARK: What the window asks
 
-    /// The pages the menus' page commands act on: the previewed page, else the selected cards' pages.
-    var selectedPages: [Int] {
-        if let preview, model.entries.indices.contains(preview.currentPage) { return [preview.currentPage] }
-        return model.pages(of: grid.selection, in: mode)
-    }
+    /// The pages the menus' page commands act on: the selected cards' pages.
+    var selectedPages: [Int] { model.pages(of: grid.selection, in: mode) }
 
     var pageCount: Int { model.entries.count }
     var fileCount: Int { model.files.count + model.pending.count }
@@ -202,48 +192,10 @@ final class WorkspaceViewController: NSViewController, WorkspaceGridDelegate, NS
 
     // MARK: Preview
 
+    /// Quick Look on the card (the hover button, double-click or Space): a card that isn't selected becomes the selection.
     func showPreview(_ id: WorkspaceItemID) {
-        guard let item = model.items(mode).first(where: { $0.id == id }), let first = item.pages.first else { return }
-        if case .file(let origin, _) = item { previewFile = origin } else { previewFile = nil }
-        let pages = previewPages(previewFile)
-        let overlay = WorkspacePreviewView(pages: pages, at: pages.firstIndex(of: first) ?? 0, page: { [weak self] in self?.owner.handle.pdf.page(at: $0) },
-                                           origin: { [weak self] in self?.model.file(of: $0) ?? PageOrigin(fileName: "", colorIndex: 0) },
-                                           actions: .init(close: { [weak self] in self?.closePreview() },
-                                                          rotate: { [weak self] page, turns in self?.owner.pageActions.rotate([page], quarterTurns: turns) },
-                                                          delete: { [weak self] page in self?.owner.pageActions.delete([page]) }))
-        overlay.frame = view.bounds
-        overlay.autoresizingMask = [.width, .height]
-        preview?.removeFromSuperview()
-        view.addSubview(overlay)
-        preview = overlay
-        if owner.environment.moves {
-            overlay.alphaValue = 0
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.18
-                overlay.animator().alphaValue = 1
-            }
-        }
-        view.window?.makeFirstResponder(overlay)
-    }
-
-    private func previewPages(_ file: PageOrigin?) -> [Int] {
-        guard let file else { return Array(model.entries.indices) }
-        return model.files.first { $0.origin == file }?.pages ?? []
-    }
-
-    func closePreview() {
-        guard let preview else { return }
-        self.preview = nil
-        previewFile = nil
-        if owner.environment.moves {
-            NSAnimationContext.runAnimationGroup({ context in
-                context.duration = 0.15
-                preview.animator().alphaValue = 0
-            }, completionHandler: { MainActor.assumeIsolated { preview.removeFromSuperview() } })
-        } else {
-            preview.removeFromSuperview()
-        }
-        view.window?.makeFirstResponder(grid)
+        if !grid.selection.contains(id) { grid.select([id]) }
+        quickLook.toggle()
     }
 
     // MARK: WorkspaceGridDelegate
@@ -281,7 +233,7 @@ final class WorkspaceViewController: NSViewController, WorkspaceGridDelegate, NS
     func gridDeleteSelection() { deleteSelection() }
 
     func gridEscape() {
-        if preview != nil { closePreview() } else { owner.hideWorkspace() }
+        owner.hideWorkspace()
     }
 
     func gridValidateDrop(_ info: NSDraggingInfo, atCardGap gap: Int, excluding: Set<WorkspaceItemID>) -> (NSDragOperation, String?) {
@@ -380,5 +332,50 @@ final class StatusBarView: NSView {
         bounds.fill()
         SPColor.separator.color.setFill()
         NSRect(x: 0, y: bounds.height - 1, width: bounds.width, height: 1).fill()
+    }
+}
+
+// MARK: - Quick Look
+
+extension WorkspaceViewController: QuickLookSource {
+    /// Several cards selected: just those. One (or none): every card, starting at the selected one, so the panel's strip
+    /// and arrows walk the whole workspace and the selection follows. Each shows a temporary PDF of its pages as they are
+    /// now (rotated, reordered, merged), made when the panel asks for it.
+    func quickLookSelection() -> QuickLookSelection {
+        let cards = model.items(mode).filter(\.isContent)
+        let selected = cards.filter { grid.selection.contains($0.id) }
+        let list = selected.count > 1 ? selected : cards
+        let current = selected.count > 1 ? 0 : (list.firstIndex { selected.first?.id == $0.id } ?? 0)
+        return QuickLookSelection(items: list.map(quickLookItem), current: current, showsSelectedOnly: selected.count > 1)
+    }
+
+    func quickLookSelect(_ item: QuickLookItem) {
+        guard let id = item.key.base as? WorkspaceItemID else { return }
+        grid.select([id])
+        if let frame = grid.frame(of: id) { grid.scrollToVisible(frame.insetBy(dx: 0, dy: -20)) }
+    }
+
+    private func quickLookItem(for card: WorkspaceItem) -> QuickLookItem {
+        let id = card.id
+        let pages = card.pages
+        let title: String
+        switch card {
+        case .file(let origin, _): title = origin.fileName
+        case .page(let index, _, let origin): title = "\(origin.fileName) – \(ViewerStrings.Workspace.pageNumber(index + 1))"
+        default: title = ""
+        }
+        return QuickLookItem(key: id, title: title, isTemporary: true,
+                             makeURL: { [weak self] in
+                                 guard let self, let data = try? Services.pages.extract(pages, from: self.owner.handle) else { return nil }
+                                 return QuickLookFiles.write(data, named: QuickLookFiles.pdfName(title))
+                             },
+                             sourceFrame: { [weak self] in
+                                 guard let self, let card = self.grid.card(for: id) else { return nil }
+                                 return self.grid.screenFrame(of: card.frame)
+                             },
+                             transition: { [weak self] in
+                                 guard let self, let card = self.grid.card(for: id) else { return nil }
+                                 return self.grid.snapshot(of: card.frame)
+                             })
     }
 }

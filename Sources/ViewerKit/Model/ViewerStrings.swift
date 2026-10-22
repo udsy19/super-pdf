@@ -86,17 +86,16 @@ public enum ViewerStrings {
         public static let hint = "Drag to reorder · Space to preview · Drop more files anywhere"
         /// The window's subtitle: "4 files · 17 pages".
         public static func subtitle(files: Int, pages: Int) -> String { "\(Formatting.count(files, "file", "files")) · \(ViewerStrings.pages(pages))" }
-        // The preview.
-        public static let closePreview = "Close Preview"
-        public static let previousPage = "Previous Page"
-        public static let nextPage = "Next Page"
-        public static func counter(_ page: Int, of count: Int) -> String { "\(page) / \(count)" }
-        public static func previewLabel(_ file: String, _ counter: String) -> String { "Preview of \(Strings.quoted(file)), page \(counter)" }
+        public static func pageNumber(_ page: Int) -> String { "Page \(page)" }
     }
 
     // MARK: Welcome window (ux §6.1, welcome.html)
 
     public enum Welcome {
+        public static let defaultAppTitle = "Make Super PDF your PDF app?"
+        public static let defaultAppInfo = "Then Finder, Quick Look and Mail open your PDFs here. macOS asks you to confirm, and you can change it any time in Settings."
+        public static let defaultAppYes = "Make Default"
+        public static let defaultAppLater = "Not Now"
         public static let subtitle = "Drop in PDFs, photos or Office files — we’ll take it from there."
         public static let open = "Open a PDF"
         public static let openHint = "Or drop one anywhere in this window"

@@ -85,5 +85,7 @@ public extension Defaults.Keys {
     // MARK: Internal: one-time offers
 
     /// The PDF Services item ("Save to Super PDF") was offered once (ARCHITECTURE "Launch sequence" step 3).
+    /// "Make Super PDF your PDF app" was offered once on the welcome window (answered or "Not now").
+    static let defaultPDFAppOffered = Key<Bool>("defaultPDFAppOffered", default: false)
     static let pdfServicesOffered = Key<Bool>("pdfServicesOffered", default: false)
 }

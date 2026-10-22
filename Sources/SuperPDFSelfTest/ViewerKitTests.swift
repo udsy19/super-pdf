@@ -594,21 +594,46 @@ private func viewerKitWorkspace() {
     wait { !alerts.messages.isEmpty }
     check(alerts.messages.last == "A PDF needs at least one page." && handle.pageCount == 19, "never the last page")
 
-    // The preview: the file's pages, ‹ › turn them, rotate acts on the page shown, Esc closes.
-    workspace.showPreview(.file(workspace.model.files[0].origin))
-    guard let preview = workspace.preview else { check(false, "the preview opens"); return }
-    check(preview.counterText == "1 / 12" && controller.selectedPages == [0], "Lease's first page of 12")
-    preview.keyDown(with: NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil,
-                                           characters: String(UnicodeScalar(NSRightArrowFunctionKey)!), charactersIgnoringModifiers: String(UnicodeScalar(NSRightArrowFunctionKey)!),
-                                           isARepeat: false, keyCode: 124)!)
-    check(preview.counterText == "2 / 12" && controller.selectedPages == [1], "→ turns the page")
-    let rotate = NSMenuItem(title: "", action: #selector(DocumentWindowController.performMenuCommand(_:)), keyEquivalent: "")
-    rotate.identifier = NSUserInterfaceItemIdentifier(MenuCommand.rotateRight.rawValue)
-    controller.performMenuCommand(rotate)
-    wait { handle.pdf.page(at: 1)?.rotation == 90 }
-    check(handle.pdf.page(at: 1)?.rotation == 90 && workspace.preview?.counterText == "2 / 12", "⌘R turns the page shown; the preview stays on it")
-    controller.cancelOperation(nil)
-    check(workspace.preview == nil && controller.workspace != nil, "Esc closes the preview first")
+    // Quick Look (never opened here: a fake panel stands in): the whole list starting at the selected card, so the panel's
+    // arrows and strip walk the workspace; several selected cards show just those; each is a temporary PDF of its pages.
+    let panel = FakePanel()
+    let quickLook = QuickLookController(source: workspace, host: panel)
+    let firstFile = workspace.model.files[0].origin
+    workspace.grid.select([.file(firstFile)])
+    var shown = workspace.quickLookSelection()
+    check(shown.items.map(\.title) == workspace.model.files.map(\.origin.fileName) && shown.current == 0 && !shown.showsSelectedOnly,
+          "one card selected: every file, starting at it (\(shown.items.map(\.title)))")
+    workspace.grid.select([.file(workspace.model.files[1].origin), .file(workspace.model.files[2].origin)])
+    shown = workspace.quickLookSelection()
+    check(shown.items.count == 2 && shown.showsSelectedOnly, "two cards selected: just those two")
+    workspace.grid.select([.file(workspace.model.files[2].origin)])
+    quickLook.toggle()
+    check(panel.shown == 1 && quickLook.items.count == workspace.model.files.count, "Space opens the panel on the cards")
+    check(quickLook.numberOfPreviewItems(in: nil) == quickLook.items.count && quickLook.previewPanel(nil, previewItemAt: 99) == nil, "the data source")
+    let leaseItem = quickLook.items[0]
+    let leaseFile = leaseItem.previewItemURL
+    check(leaseFile?.lastPathComponent == "Lease agreement.pdf" && PDFDocument(url: leaseFile!)?.pageCount == 12
+          && leaseFile!.path.hasPrefix(FileManager.default.temporaryDirectory.path), "its file is a temporary PDF of the file's 12 pages")
+    check(quickLook.previewPanel(nil, sourceFrameOnScreenFor: leaseItem) == .zero, "no zoom frame while the window isn't on screen")
+    quickLook.panelMoved(to: 1)
+    check(workspace.grid.selection == [.file(workspace.model.files[1].origin)], "moving in the panel moves the selection")
+    quickLook.reloadIfOpen()
+    check(panel.reloads == 1 && panel.currentIndex == 1, "a change under the open panel reloads it on the selection")
+    quickLook.toggle()
+    check(panel.hidden == 1, "Space again closes it")
+    let leaseFolder = leaseFile!.deletingLastPathComponent()
+    leaseItem.discard()
+    check(!FileManager.default.fileExists(atPath: leaseFolder.path), "the temporary file and its folder go with the item")
+    workspace.setMode(.pages)
+    workspace.grid.select([workspace.grid.items[1].id])
+    let pageItems = workspace.quickLookSelection()
+    check(pageItems.items.count == handle.pageCount && pageItems.current == 1 && pageItems.items[1].title == "Lease agreement.pdf – Page 2",
+          "Pages mode: a card per page (\(pageItems.items[1].title))")
+    let pageFile = pageItems.items[1].previewItemURL
+    check(PDFDocument(url: pageFile!)?.pageCount == 1, "a page is a one-page temporary PDF")
+    pageItems.items.forEach { $0.discard() }
+    check(pageFile.map { !FileManager.default.fileExists(atPath: $0.path) } == true, "and is removed")
+    workspace.setMode(.files)
 
     // List view, then Finish: back to the document with the banner that offers to save.
     workspace.setLayout(.list)
@@ -967,6 +992,31 @@ private func viewerKitRenders() {
         render(welcomeWindow, "welcome")
         render(welcomeWindow, "welcome-dark", dark: true)
     }
+    // Quick Look on the recent files: the files themselves, starting at the highlighted row, the panel's moves highlight.
+    let recentPanel = FakePanel()
+    let recentLook = QuickLookController(source: welcome, host: recentPanel)
+    let recentSelection = welcome.quickLookSelection()
+    check(recentSelection.items.map(\.title) == [url.lastPathComponent, "Tax return 2025.pdf", "Grandma’s recipes.pdf"]
+          && recentSelection.current == 0 && recentSelection.items[1].previewItemURL.lastPathComponent == "Tax return 2025.pdf", "the welcome window's recents preview as the files")
+    recentLook.toggle()
+    check(recentPanel.shown == 1, "Space on the welcome window opens the panel")
+    recentLook.panelMoved(to: 2)
+    check(welcome.welcomeView.highlightedRow == 2, "moving in the panel highlights that recent file")
+    recentSelection.items.forEach { $0.discard() }
+    // The sidebar's thumbnails: every page, starting at the selected one; a real file would not be touched.
+    let thumbnails = controller.sidebar.thumbnails
+    thumbnails.select([1], scroll: false)
+    let pageLook = thumbnails.quickLookSelection()
+    check(pageLook.items.count == controller.handle.pageCount && pageLook.current == 1 && !pageLook.showsSelectedOnly, "the thumbnails preview every page from the selected one")
+    thumbnails.select([0, 2], scroll: false)
+    check(thumbnails.quickLookSelection().items.count == 2 && thumbnails.quickLookSelection().showsSelectedOnly, "two selected pages: just those")
+    let pagePanel = FakePanel()
+    let thumbnailLook = QuickLookController(source: thumbnails, host: pagePanel)
+    thumbnails.select([1], scroll: false)
+    thumbnailLook.toggle()
+    thumbnailLook.panelMoved(to: 3)
+    check(pagePanel.shown == 1 && thumbnails.selection == [3], "moving in the panel selects that thumbnail")
+    thumbnailLook.items.forEach { $0.discard() }
     _ = renderer
 }
 
@@ -1025,15 +1075,6 @@ private func renderWorkspace(_ documents: FakeDocuments) {
     settle()
     render(window, "workspace-list")
     workspace.setLayout(.grid)
-    workspace.showPreview(ids[0])
-    if let preview = workspace.preview {
-        for _ in 0..<4 { preview.reload(pages: preview.pages, current: preview.currentPage + 1) }
-        preview.layoutSubtreeIfNeeded()
-        RunLoop.main.run(until: Date().addingTimeInterval(0.6))
-        check(preview.counterText == "5 / 12", "the preview on page 5 of the lease (\(preview.counterText))")
-        render(window, "workspace-preview")
-        workspace.closePreview()
-    }
     convert.hold = false
     wait { workspace.model.pending.isEmpty }
     window.close()
@@ -1241,4 +1282,15 @@ private func viewerKitThumbnailMarkup() {
     let link = PDFAnnotation(bounds: CGRect(x: 0, y: 0, width: 50, height: 50), forType: .link, withProperties: nil)
     page.addAnnotation(link)
     check(ThumbnailRenderer.markupSignature(of: page) == 0, "links don't show in thumbnails")
+}
+
+/// Quick Look's panel, as far as the controller uses it; counts instead of opening anything.
+@MainActor
+final class FakePanel: PreviewPanelHosting {
+    var isVisible = false
+    var currentIndex = 0
+    private(set) var shown = 0, hidden = 0, reloads = 0
+    func show() { isVisible = true; shown += 1 }
+    func hide() { isVisible = false; hidden += 1 }
+    func reload() { reloads += 1 }
 }

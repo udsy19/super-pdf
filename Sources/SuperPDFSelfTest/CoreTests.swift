@@ -2,6 +2,7 @@ import AppKit
 import Combine
 import PDFKit
 import SuperPDFCore
+import UniformTypeIdentifiers
 
 // Owned with SuperPDFCore: the contracts every module builds on.
 func registerCoreTests() {
@@ -11,6 +12,7 @@ func registerCoreTests() {
     SelfTest.cases.append(("Core.strings", { coreStrings() }))
     SelfTest.cases.append(("Core.converterTable", { coreConverterTable() }))
     SelfTest.cases.append(("Core.menus", { coreMenus() }))
+    SelfTest.cases.append(("Core.defaultPDFApp", { coreDefaultPDFApp() }))
     SelfTest.cases.append(("Core.pagesAndNaming", { corePagesAndNaming() }))
     SelfTest.cases.append(("Core.valueTypes", { coreValueTypes() }))
     SelfTest.cases.append(("Core.codable", { coreCodable() }))
@@ -71,7 +73,8 @@ private func coreDefaultsRoundTrip() {
     roundTrip(.cleanUpScans, false, native: true)
     roundTrip(.checkForUpdates, false, native: true)
     roundTrip(.pdfServicesOffered, true, native: true)
-    check(checked.count == 18, "every key is exercised (\(checked.count) of 18)")
+    roundTrip(.defaultPDFAppOffered, true, native: true)
+    check(checked.count == 19, "every key is exercised (\(checked.count) of 19)")
 
     check(Defaults.Keys.saveBehaviour.defaultValue == .ask, "the first save asks (ux §7.1)")
     check(Defaults.Keys.checkForUpdates.defaultValue && Defaults.Keys.showRecentlyUsed.defaultValue, "updates and the recent row on")
@@ -606,4 +609,69 @@ private func coreFakes() {
 
     check(FakeAFEmulator().run("AFSimple_Calculate(\"SUM\", [\"A\", \"B\"])", action: .calculate, value: "", fields: ["A": "2", "B": "3"])
           == .value("5"), "AF sum emulation")
+}
+
+/// The PDF-app switch against a fake workspace: the real default app is never read or changed.
+@MainActor
+private final class FakeDefaultApps: DefaultAppControlling {
+    var handler: URL? = URL(fileURLWithPath: "/Applications/Adobe Acrobat.app")
+    var answer: Result<Bool, Error> = .success(true)
+    private(set) var asked: [(app: URL, type: UTType)] = []
+    func defaultApplication(toOpen type: UTType) -> URL? { handler }
+    func setDefaultApplication(at app: URL, toOpen type: UTType) async throws {
+        asked.append((app, type))
+        if case .success(let accept) = answer, accept { handler = app }
+        if case .failure(let error) = answer { throw error }
+    }
+}
+
+@MainActor
+private func coreDefaultPDFApp() {
+    let app = URL(fileURLWithPath: "/Applications/Super PDF.app")
+    let fake = FakeDefaultApps()
+    let pdfApp = DefaultPDFApp(workspace: fake, appURL: app, bundleIdentifier: nil)
+    Defaults.reset(.defaultPDFAppOffered)
+    check(pdfApp.state == .other(name: "Adobe Acrobat"), "Acrobat is named when it opens PDFs")
+    check(pdfApp.shouldOffer(), "offered when another app has PDFs")
+    pdfApp.rememberOffered()
+    check(!pdfApp.shouldOffer(), "\"Not now\" is remembered: never offered again")
+    Defaults.reset(.defaultPDFAppOffered)
+
+    wait(for: { await pdfApp.makeDefault() }) { outcome in
+        check(outcome == .changed && pdfApp.state == .thisApp && fake.asked.count == 1, "changed, and the state is refreshed")
+        check(fake.asked.first?.app == app && fake.asked.first?.type == .pdf, "asks for PDFs, with this app")
+    }
+    check(!pdfApp.shouldOffer() && Defaults[.defaultPDFAppOffered], "never offered when it already is the PDF app (and remembered)")
+
+    fake.handler = URL(fileURLWithPath: "/Applications/Preview.app")
+    fake.answer = .success(false)
+    wait(for: { await pdfApp.makeDefault() }) { outcome in
+        check(outcome == .declined && pdfApp.state == .other(name: "Preview"), "macOS kept the old app: declined, state unchanged")
+    }
+    fake.answer = .failure(CocoaError(.userCancelled))
+    wait(for: { await pdfApp.makeDefault() }) { check($0 == .declined, "cancelling the system prompt is a quiet no") }
+    fake.answer = .failure(CocoaError(.fileWriteNoPermission))
+    wait(for: { await pdfApp.makeDefault() }) { outcome in
+        if case .failed = outcome { check(true, "") } else { check(false, "other errors say why") }
+    }
+    fake.handler = nil
+    check(pdfApp.state == .unknown, "no app at all")
+
+    let bare = DefaultPDFApp(workspace: fake, appURL: URL(fileURLWithPath: "/tmp/SuperPDF"), bundleIdentifier: nil)
+    Defaults.reset(.defaultPDFAppOffered)
+    check(!bare.canChange && !bare.shouldOffer(), "a bare executable (swift run) neither offers nor changes anything")
+    let before = fake.asked.count
+    wait(for: { await bare.makeDefault() }) { _ in check(fake.asked.count == before, "and never asks macOS") }
+    Defaults.reset(.defaultPDFAppOffered)
+}
+
+/// Runs an async call to its end (spinning the run loop), then checks its result.
+@MainActor
+private func wait<T>(for work: @escaping @MainActor () async -> T, then body: (T) -> Void) {
+    var result: T?
+    Task { @MainActor in result = await work() }
+    let deadline = Date().addingTimeInterval(5)
+    while result == nil, Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
+    guard let result else { check(false, "the call finished"); return }
+    body(result)
 }

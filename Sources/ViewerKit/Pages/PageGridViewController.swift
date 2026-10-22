@@ -17,6 +17,7 @@ final class PageGridViewController: NSViewController, NSCollectionViewDataSource
     private let dropLabel = DropLabelView()
     private var dropLabelTimer: Timer?
     private let style = ThumbnailStyle.sidebar
+    private(set) lazy var quickLook = QuickLookController(source: self)
     /// Turned page aspects (height / width), read once per reload.
     private var aspects: [CGFloat] = []
     private var droppedFiles: (sequence: Int, files: [DroppedFile])?
@@ -48,6 +49,8 @@ final class PageGridViewController: NSViewController, NSCollectionViewDataSource
         collectionView.setDraggingSourceOperationMask([.copy, .move, .generic], forLocal: true)
         collectionView.setDraggingSourceOperationMask([.copy], forLocal: false)
         collectionView.onDelete = { [weak self] in self?.deleteSelection() }
+        collectionView.quickLook = quickLook
+        collectionView.onSpace = { [weak self] in self?.quickLook.toggle() }
         collectionView.onDragExit = { [weak self] in self?.hideDropLabel() }
         collectionView.menuForSelection = { [weak self] selection in self?.owner.pageMenu(for: Array(selection)) }
         collectionView.setAccessibilityLabel("Thumbnails")
@@ -78,6 +81,7 @@ final class PageGridViewController: NSViewController, NSCollectionViewDataSource
         collectionView.pageCount = pageCount
         collectionView.reloadData()
         select(keep.filteredIndexSet { $0 < pageCount }, scroll: selection != nil)
+        quickLook.reloadIfOpen()
     }
 
     /// Annotations changed (markup added, a note edited, a field filled, undo): the visible pages whose look changed get
@@ -337,5 +341,43 @@ final class PageGridViewController: NSViewController, NSCollectionViewDataSource
         dropLabelTimer?.invalidate()
         dropLabelTimer = nil
         dropLabel.isHidden = true
+    }
+}
+
+// MARK: - Quick Look
+
+extension PageGridViewController: QuickLookSource {
+    /// Several pages selected: just those. One: every page, starting at it, so ↑ ↓ walk the document and the selection
+    /// follows. Each is a temporary PDF of the page as it is now.
+    func quickLookSelection() -> QuickLookSelection {
+        let chosen = selection
+        let pages = chosen.count > 1 ? Array(chosen) : Array(0..<pageCount)
+        let name = QuickLookFiles.pdfName(document.displayName)
+        return QuickLookSelection(items: pages.map { quickLookItem(page: $0, name: name) },
+                                  current: chosen.count > 1 ? 0 : (pages.firstIndex(of: chosen.first ?? 0) ?? 0),
+                                  showsSelectedOnly: chosen.count > 1)
+    }
+
+    func quickLookSelect(_ item: QuickLookItem) {
+        guard let page = item.key.base as? Int else { return }
+        select(IndexSet(integer: page), scroll: true)
+        onSelectionChange?(IndexSet(integer: page))
+    }
+
+    private func quickLookItem(page: Int, name: String) -> QuickLookItem {
+        let path = IndexPath(item: page, section: 0)
+        return QuickLookItem(key: page, title: "\(document.displayName) – \(ViewerStrings.Workspace.pageNumber(page + 1))", isTemporary: true,
+                             makeURL: { [weak self] in
+                                 guard let self, let data = try? Services.pages.extract([page], from: self.document) else { return nil }
+                                 return QuickLookFiles.write(data, named: name)
+                             },
+                             sourceFrame: { [weak self] in
+                                 guard let self, let frame = self.layout.layoutAttributesForItem(at: path)?.frame else { return nil }
+                                 return self.collectionView.screenFrame(of: frame)
+                             },
+                             transition: { [weak self] in
+                                 guard let self, let frame = self.layout.layoutAttributesForItem(at: path)?.frame else { return nil }
+                                 return self.collectionView.snapshot(of: frame)
+                             })
     }
 }

@@ -1,4 +1,5 @@
 import AppKit
+import QuickLookUI
 import SuperPDFCore
 
 /// The welcome window (ux §6.1, welcome.png): 760 × 520, not resizable, centred, on a soft wash of the brand colours.
@@ -9,6 +10,8 @@ import SuperPDFCore
 final class WelcomeWindowController: NSWindowController, NSWindowDelegate {
     private unowned let viewer: Viewer
     let welcomeView: WelcomeView
+    /// Space on a recent file: the system's Quick Look panel.
+    private(set) lazy var quickLook = QuickLookController(source: self)
 
     init(viewer: Viewer) {
         self.viewer = viewer
@@ -35,6 +38,30 @@ final class WelcomeWindowController: NSWindowController, NSWindowDelegate {
         reloadRecents()
         guard viewer.environment.showsWindows else { return }
         super.showWindow(sender)
+        window?.makeFirstResponder(welcomeView)
+        offerDefaultPDFAppOnce()
+    }
+
+    /// "Make Super PDF your PDF app?" as a sheet on the welcome window, once ever: any answer, "Not Now" included, is
+    /// remembered, and Settings › General keeps the button. Not while another alert is up.
+    private func offerDefaultPDFAppOnce() {
+        let handler = DefaultPDFApp.shared
+        guard viewer.environment.showsWindows, handler.shouldOffer() else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
+            MainActor.assumeIsolated {
+                guard let window = self?.window, window.isVisible, NSApp.modalWindow == nil, window.attachedSheet == nil else { return }
+                handler.rememberOffered()
+                let alert = NSAlert()
+                alert.messageText = ViewerStrings.Welcome.defaultAppTitle
+                alert.informativeText = ViewerStrings.Welcome.defaultAppInfo
+                alert.addButton(withTitle: ViewerStrings.Welcome.defaultAppYes)
+                alert.addButton(withTitle: ViewerStrings.Welcome.defaultAppLater)
+                alert.beginSheetModal(for: window) { response in
+                    guard response == .alertFirstButtonReturn else { return }
+                    Task { @MainActor in await handler.makeDefault() }
+                }
+            }
+        }
     }
 
     func reloadRecents() {
@@ -84,6 +111,24 @@ final class WelcomeWindowController: NSWindowController, NSWindowDelegate {
     }
 }
 
+extension WelcomeWindowController: QuickLookSource {
+    /// The recent files themselves, starting at the one under the pointer (or the first); the panel's arrows move the
+    /// highlight along.
+    func quickLookSelection() -> QuickLookSelection {
+        let recents = welcomeView.recents
+        let items = recents.enumerated().map { index, recent in
+            QuickLookItem(key: recent.url, title: recent.name, isTemporary: false, makeURL: { recent.url },
+                          sourceFrame: { [weak self] in self?.welcomeView.screenFrame(ofRow: index) },
+                          transition: { [weak self] in self?.welcomeView.snapshot(ofRow: index) })
+        }
+        return QuickLookSelection(items: items, current: welcomeView.highlightedRow, showsSelectedOnly: false)
+    }
+
+    func quickLookSelect(_ item: QuickLookItem) {
+        if let index = welcomeView.recents.firstIndex(where: { $0.url == item.key.base as? URL }) { welcomeView.highlight(index) }
+    }
+}
+
 /// The welcome window's content, laid out to welcome.png: everything centred on the 760 pt window.
 final class WelcomeView: NSView {
     weak var controller: WelcomeWindowController?
@@ -108,6 +153,7 @@ final class WelcomeView: NSView {
     static var contentWidth: CGFloat { 4 * SPMetrics.Welcome.targetSize.width + 3 * 16 }
 
     override var isFlipped: Bool { true }
+    override var acceptsFirstResponder: Bool { true }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -169,6 +215,34 @@ final class WelcomeView: NSView {
         default: controller?.chooseFileToConvert()
         }
     }
+
+    // MARK: Quick Look on the recent files
+
+    private var rows: [RecentRowView] { recentList.subviews.compactMap { $0 as? RecentRowView } }
+
+    /// The row under the pointer, else the first.
+    var highlightedRow: Int { rows.firstIndex { $0.isHovered } ?? 0 }
+
+    func highlight(_ index: Int) {
+        for (position, row) in rows.enumerated() { row.isHovered = position == index }
+        if rows.indices.contains(index) { recentList.scrollToVisible(rows[index].frame) }
+    }
+
+    func screenFrame(ofRow index: Int) -> NSRect? {
+        rows.indices.contains(index) ? recentList.screenFrame(of: rows[index].frame) : nil
+    }
+
+    func snapshot(ofRow index: Int) -> NSImage? {
+        rows.indices.contains(index) ? recentList.snapshot(of: rows[index].frame) : nil
+    }
+
+    override func keyDown(with event: NSEvent) {
+        if event.charactersIgnoringModifiers == " ", !recents.isEmpty { controller?.quickLook.toggle() } else { super.keyDown(with: event) }
+    }
+
+    override func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool { controller != nil }
+    override func beginPreviewPanelControl(_ panel: QLPreviewPanel!) { controller?.quickLook.begin(panel) }
+    override func endPreviewPanelControl(_ panel: QLPreviewPanel!) { controller?.quickLook.end(panel) }
 
     private func layoutRecents() {
         recentList.subviews.forEach { $0.removeFromSuperview() }
