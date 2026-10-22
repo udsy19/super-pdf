@@ -4,38 +4,8 @@
 <dict>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
-	<key>CFBundleName</key>
-	<string>Super PDF</string>
 	<key>CFBundleDisplayName</key>
 	<string>Super PDF</string>
-	<key>CFBundleIdentifier</key>
-	<string>com.udsy.superpdf</string>
-	<key>CFBundleExecutable</key>
-	<string>SuperPDF</string>
-	<key>CFBundleIconFile</key>
-	<string>AppIcon</string>
-	<key>CFBundleIconName</key>
-	<string>AppIcon</string>
-	<key>CFBundlePackageType</key>
-	<string>APPL</string>
-	<key>CFBundleInfoDictionaryVersion</key>
-	<string>6.0</string>
-	<key>CFBundleShortVersionString</key>
-	<string>1.0.0</string>
-	<key>CFBundleVersion</key>
-	<string>1</string>
-	<key>LSMinimumSystemVersion</key>
-	<string>14.0</string>
-	<key>LSApplicationCategoryType</key>
-	<string>public.app-category.productivity</string>
-	<key>NSPrincipalClass</key>
-	<string>NSApplication</string>
-	<key>NSHighResolutionCapable</key>
-	<true/>
-	<key>NSSupportsAutomaticGraphicsSwitching</key>
-	<true/>
-	<key>NSHumanReadableCopyright</key>
-	<string>© 2026 Udaya Vijay Anand. MIT licence.</string>
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>
@@ -183,41 +153,36 @@
 			</array>
 		</dict>
 		<dict>
-			<key>CFBundleTypeName</key>
-			<string>Other documents</string>
-			<key>CFBundleTypeRole</key>
-			<string>Viewer</string>
-			<key>LSHandlerRank</key>
-			<string>Alternate</string>
 			<key>CFBundleTypeExtensions</key>
 			<array>
 				<string>wordml</string>
 				<string>hwpx</string>
 				<string>msg</string>
 			</array>
+			<key>CFBundleTypeName</key>
+			<string>Other documents</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
 		</dict>
 	</array>
-	<key>UTImportedTypeDeclarations</key>
-	<array>
-		<dict>
-			<key>UTTypeIdentifier</key>
-			<string>org.libreoffice.hwp-document</string>
-			<key>UTTypeDescription</key>
-			<string>Hangul document</string>
-			<key>UTTypeConformsTo</key>
-			<array>
-				<string>public.data</string>
-				<string>public.content</string>
-			</array>
-			<key>UTTypeTagSpecification</key>
-			<dict>
-				<key>public.filename-extension</key>
-				<array>
-					<string>hwp</string>
-				</array>
-			</dict>
-		</dict>
-	</array>
+	<key>CFBundleExecutable</key>
+	<string>SuperPDF</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundleIconName</key>
+	<string>AppIcon</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.udsy.superpdf</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>Super PDF</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0.0</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -229,6 +194,36 @@
 			</array>
 		</dict>
 	</array>
+	<key>CFBundleVersion</key>
+	<string>37</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.productivity</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Super PDF asks Word, Excel, PowerPoint, Pages, Numbers or Keynote to export a file as a PDF when you convert one.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Super PDF uses the camera when you scan a page from a photo or hold up a signature to save it.</string>
+	<key>NSCameraUseContinuityCameraDeviceType</key>
+	<true/>
+	<key>NSContactsUsageDescription</key>
+	<string>Super PDF reads your contact card to fill in forms and sign notes with your name, and finds the people you ask to sign.</string>
+	<key>NSDesktopFolderUsageDescription</key>
+	<string>Super PDF saves the files it makes next to the originals.</string>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>Super PDF saves the files it makes next to the originals.</string>
+	<key>NSDownloadsFolderUsageDescription</key>
+	<string>Super PDF saves the files it makes next to the originals.</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>© 2026 Udaya Vijay Anand. MIT licence.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Super PDF uses the microphone when you record a voice note on a page.</string>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
+	<key>NSRemovableVolumesUsageDescription</key>
+	<string>Super PDF saves the files it makes next to the originals.</string>
 	<key>NSServices</key>
 	<array>
 		<dict>
@@ -241,6 +236,8 @@
 			<string>openSelectionAsPDF</string>
 			<key>NSPortName</key>
 			<string>Super PDF</string>
+			<key>NSRequiredContext</key>
+			<dict/>
 			<key>NSSendTypes</key>
 			<array>
 				<string>public.utf8-plain-text</string>
@@ -249,27 +246,30 @@
 				<string>public.png</string>
 				<string>com.adobe.pdf</string>
 			</array>
-			<key>NSRequiredContext</key>
-			<dict/>
 		</dict>
 	</array>
-	<key>NSCameraUsageDescription</key>
-	<string>Super PDF uses the camera when you scan a page from a photo or hold up a signature to save it.</string>
-	<key>NSCameraUseContinuityCameraDeviceType</key>
+	<key>NSSupportsAutomaticGraphicsSwitching</key>
 	<true/>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>Super PDF uses the microphone when you record a voice note on a page.</string>
-	<key>NSContactsUsageDescription</key>
-	<string>Super PDF reads your contact card to fill in forms and sign notes with your name, and finds the people you ask to sign.</string>
-	<key>NSAppleEventsUsageDescription</key>
-	<string>Super PDF asks Word, Excel, PowerPoint, Pages, Numbers or Keynote to export a file as a PDF when you convert one.</string>
-	<key>NSDesktopFolderUsageDescription</key>
-	<string>Super PDF saves the files it makes next to the originals.</string>
-	<key>NSDocumentsFolderUsageDescription</key>
-	<string>Super PDF saves the files it makes next to the originals.</string>
-	<key>NSDownloadsFolderUsageDescription</key>
-	<string>Super PDF saves the files it makes next to the originals.</string>
-	<key>NSRemovableVolumesUsageDescription</key>
-	<string>Super PDF saves the files it makes next to the originals.</string>
+	<key>UTImportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+				<string>public.content</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Hangul document</string>
+			<key>UTTypeIdentifier</key>
+			<string>org.libreoffice.hwp-document</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>hwp</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
 </dict>
 </plist>
