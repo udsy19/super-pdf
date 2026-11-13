@@ -47,3 +47,14 @@ Each is asked the first time it is needed, and only then.
 Delete the app, `~/Library/Application Support/Super PDF/`, `~/Library/Preferences/com.udsy.superpdf.plist`, the
 "Save to Super PDF" item in `~/Library/PDF Services/` if you added it, and, in Keychain Access, the items named
 `com.udsy.superpdf` and your Super PDF signing certificates.
+
+## Mac App Store edition
+
+Super PDF from the Mac App Store (`com.udsy.superpdf.appstore`) differs from the direct download as follows:
+
+- **Data collected by the developer: none.** No account, analytics, crash reporting, tracking or remote settings.
+- **One optional network connection:** only with Settings › Signatures › "Add a trusted timestamp" turned on, when you sign with a certificate, the app sends a SHA-256 hash of the signature value (never the document) to the HTTPS timestamp server you name. There is no update check (the App Store updates it) and no links to download other apps.
+- **Permissions, each asked only when you use the feature:** Camera (scanning a page or capturing a signature), Microphone (recording a voice note on a page), Contacts (filling forms, finding names to black out, choosing signers). Everything else works if you decline.
+- **Files:** it reads only the documents you open, drop or pick, and saves next to the original when it is allowed to, otherwise in Downloads (and says so).
+- **Where data lives:** settings, signatures and recent files inside the app's sandbox container, `~/Library/Containers/com.udsy.superpdf.appstore/`. Importing from the direct download is a copy you start; nothing is moved or deleted.
+- **Removing everything:** delete the app, then the container folder above.
